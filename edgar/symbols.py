@@ -1,4 +1,6 @@
+import pandas as pd
 import requests
+from database.database import db_connector
 
 
 def resolve_cik_to_symbol_mapping():
@@ -24,7 +26,14 @@ def resolve_cik_to_symbol_mapping():
                 'title': title
             }
 
-        return cik_mapping
+        # Convert the dictionary to a DataFrame
+        df = pd.DataFrame.from_dict(cik_mapping, orient='index')
+        df.reset_index(inplace=True)
+        df.columns = ['cik', 'symbol', 'title']
+
+        db_connector.insert_dataframe(df, name='cik_mapping', schema='company_facts', index=False, if_exists='replace')
+
+        return df
 
     except requests.exceptions.RequestException as e:
         print(f"Error retrieving CIK to symbol mapping: {str(e)}")

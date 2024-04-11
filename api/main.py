@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # from api.routes.architecture import architecture_router
 from api.routes.auth import auth_router
+from api.routes.company_facts import company_facts_router
 # from api.routes.features import features_router
 # from api.routes.forecasts import forecasts_router
 # from api.routes.homepage import homepage_route
@@ -24,3 +25,4 @@ app.add_middleware(
 # app.include_router(features_router, prefix="/features")
 # app.include_router(backtest_results_router)
 app.include_router(auth_router)
+app.include_router(company_facts_router)
