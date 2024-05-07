@@ -1,4 +1,6 @@
 # main.py
+from datetime import datetime
+
 from fastapi import APIRouter
 from database.database import db_connector
 
@@ -25,26 +27,38 @@ def search(term: str):
 @company_facts_router.get("/company_facts/facts")
 def get_company_facts(symbol: str):
     try:
-        # Fetch the distinct fact_keys and their descriptions
-        distinct_query = f"SELECT DISTINCT fact_key, description FROM company_facts.{symbol}"
-        distinct_results = db_connector.run_query(distinct_query, return_df=True)
+        # Get the current date
+        current_date = datetime.now().date()
 
-        # Fetch the entire table
-        table_query = f"SELECT * FROM company_facts.{symbol}"
+        # Get the start of the current quarter
+        current_quarter_start = current_date.replace(day=1, month=((current_date.month - 3) // 3) * 3 + 1)
+        print(current_quarter_start)
+
+        # Fetch the table for non-discontinued series
+        table_query = f"""
+        SELECT *
+        FROM company_facts.{symbol}
+        WHERE fact_key IN (
+            SELECT DISTINCT fact_key
+            FROM company_facts.{symbol}
+            WHERE filed_date >= '{current_quarter_start}'
+        )
+        """
         table_results = db_connector.run_query(table_query, return_df=True)
-
-        # Convert the distinct results to a dictionary
-        fact_keys = distinct_results['fact_key'].tolist()
-        descriptions = distinct_results['description'].tolist()
-        company_facts_metadata = dict(zip(fact_keys, descriptions))
 
         # Convert the table results to a list of dictionaries
         company_facts_data = table_results.to_dict(orient='records')
+
+        # Generate the metadata from the table_results
+        fact_keys = table_results['fact_key'].unique().tolist()
+        descriptions = table_results.groupby('fact_key')['description'].first().tolist()
+        company_facts_metadata = dict(zip(fact_keys, descriptions))
 
         return {
             'metadata': company_facts_metadata,
             'data': company_facts_data
         }
+
     except Exception as e:
         print(f"Error fetching company facts: {str(e)}")
         return {"error": "Failed to fetch company facts"}
