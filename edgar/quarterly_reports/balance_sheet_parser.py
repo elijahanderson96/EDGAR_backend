@@ -1,224 +1,190 @@
-import pandas as pd
-from bs4 import BeautifulSoup
-import re
-from dateutil import parser
+import os
+
+from pdf2image import convert_from_path
+from transformers import TableTransformerForObjectDetection, DetrFeatureExtractor
+from PIL import Image, ImageDraw
+import pytesseract
+import pdfkit
+import logging
+import matplotlib.pyplot as plt
+import torch
+import easyocr
+import numpy as np
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+config = pdfkit.configuration(wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 
-def extract_filed_as_of_date(text):
-    match = re.search(r'FILED AS OF DATE:\s*(\d{8})', text)
-    if match:
-        filed_as_of_date = match.group(1)
-        formatted_date = f"{filed_as_of_date[:4]}-{filed_as_of_date[4:6]}-{filed_as_of_date[6:]}"
-        return formatted_date
-    return None
+def convert_html_to_pdf(html_file, pdf_file):
+    logging.info(f"Converting HTML file '{html_file}' to PDF")
+    options = {
+        'page-size': 'Letter',
+        'margin-top': '0.75in',
+        'margin-right': '0.75in',
+        'margin-bottom': '0.75in',
+        'margin-left': '0.75in',
+        'encoding': "UTF-8",
+        'custom-header': [
+            ('Accept-Encoding', 'gzip')
+        ],
+        'cookie': [
+            ('cookie-name1', 'cookie-value1'),
+            ('cookie-name2', 'cookie-value2'),
+        ],
+        'no-outline': None
+    }
+    pdfkit.from_file(html_file, pdf_file, options=options, configuration=config)
+    logging.info(f"PDF file '{pdf_file}' created successfully")
 
 
-def get_conversion_factor(unit):
-    if 'millions' in unit.lower():
-        return 1000000
-    elif 'thousands' in unit.lower():
-        return 1000
-    else:
-        return 1
+def preprocess_pdf(pdf_file):
+    logging.info(f"Preprocessing PDF file '{pdf_file}'")
+    # Perform any necessary preprocessing on the PDF file
+    # This can include tasks like removing noise, enhancing contrast, etc.
+    # For simplicity, we'll skip this step in this example
+    pass
 
 
-unit_pattern = re.compile(r'(\(.*?(?:millions|thousands).*?\))', re.IGNORECASE)
+def detect_tables(image, model, feature_extractor):
+    logging.info("Detecting tables in the image")
+    # Preprocess the image
+    encoding = feature_extractor(image, return_tensors="pt")
 
-# Replace this with the actual file path from the directory structure
-file_path = "sec-edgar-filings/GOOG/10-Q/0001652044-18-000035/primary-document.html"
-# file_path = "sec-edgar-filings/PG/10-Q/0000080424-15-000098/full-submission.txt"
+    # Use the TableTransformer model to detect tables in the image
+    with torch.no_grad():
+        outputs = model(**encoding)
 
-# Read the HTML file
-with open(file_path, "r") as file:
-    html_content = file.read()
+    # Process the model outputs to get the bounding boxes of the detected tables
+    width, height = image.size
+    results = feature_extractor.post_process_object_detection(outputs, threshold=0.7, target_sizes=[(height, width)])[0]
 
-# Create a BeautifulSoup object
-soup = BeautifulSoup(html_content, "html.parser")
-date = extract_filed_as_of_date(html_content)
-unit_match = unit_pattern.search(html_content)
+    logging.info(f"Detected {len(results['boxes'])} tables in the image")
+    return results['boxes']
 
-if unit_match:
-    unit = unit_match.group(1)
-    conversion_factor = get_conversion_factor(unit)
-    print(f"Unit: {unit}")
-    print(f"Conversion Factor: {conversion_factor}")
-else:
-    conversion_factor = 1
-    print("Unit not found. Assuming no conversion needed.")
 
-# Find the <font> tags containing the quarterly period text
-font_tags = soup.find_all('font', string=re.compile(r"(?i)For the (?:Quarterly|quarterly) Period Ended"))
+def visualize_table_regions(image, table_boxes, output_path):
+    draw = ImageDraw.Draw(image)
+    for box in table_boxes:
+        # Convert bounding box coordinates to integers
+        box = [round(coord.item()) for coord in box]
 
-if font_tags:
-    # Extract the text from the next <font> tag
-    next_font_tag = font_tags[0].find_next('font')
-    if next_font_tag:
-        date_string = next_font_tag.get_text(strip=True)
+        # Draw rectangle on the image
+        draw.rectangle(box, outline="red", width=1)
+
+    # Save the image with visualized table regions
+    image.save(output_path)
+    logging.info(f"Saved image with visualized table regions: {output_path}")
+
+
+
+def extract_table_data(image, table_boxes, page_num):
+    logging.info("Extracting table data using OCR")
+    table_data = []
+    reader = easyocr.Reader(['en'])  # Initialize EasyOCR reader for English language
+
+    for i, box in enumerate(table_boxes):
+        # Convert bounding box coordinates to integers
+        box = [round(coord.item()) for coord in box]
+
+        # Extract coordinates from the bounding box
+        x1, y1, x2, y2 = box
+
+        # Validate bounding box coordinates
+        width, height = image.size
+        x1 = max(0, x1)
+        y1 = max(0, y1)
+        x2 = min(width, x2)
+        y2 = min(height, y2)
+
+        logging.info(f"Table bounding box: ({x1}, {y1}, {x2}, {y2})")
+        logging.info(f"Image dimensions: ({width}, {height})")
+
+        # Skip processing if the bounding box is invalid or too small
+        if x2 <= x1 or y2 <= y1:
+            logging.warning(f"Skipping table with invalid bounding box: ({x1}, {y1}, {x2}, {y2})")
+            continue
+
+        # Crop the image to the table region
+        table_image = image.crop((x1, y1, x2, y2))
+
+        # Save the cropped table image
+        table_image_path = f"table_page{page_num}_table{i + 1}.png"
         try:
-            report_date = parser.parse(date_string).strftime("%Y-%m-%d")
-            print("Quarterly Period Date:", report_date)
-        except ValueError:
-            print("Invalid date format.")
-    else:
-        print("Date not found in the next <font> tag.")
-else:
-    print("Quarterly period text not found in the HTML content.")
+            table_image.save(table_image_path)
+            logging.info(f"Saved cropped table image: {table_image_path}")
+        except Exception as e:
+            logging.error(f"Error saving cropped table image: {str(e)}")
 
-if not date:
-    raise ValueError("Could not resolve filing date.")
+        try:
+            # Convert the PIL image to a numpy array
+            table_image_np = np.array(table_image)
 
+            # Apply OCR to extract the text from the table image using EasyOCR
+            results = reader.readtext(table_image_np)
+            table_text = '\n'.join([result[1] for result in results])
+            table_data.append(table_text)
+        except Exception as e:
+            logging.error(f"Error during OCR: {str(e)}")
+            continue
 
-def extract_tables(soup):
-    tables = {}
-
-    # List of possible texts for each financial statement
-    financial_statements = [
-        ("CONDENSED CONSOLIDATED STATEMENTS OF OPERATIONS", "CONSOLIDATED STATEMENTS OF OPERATIONS", "CONSOLIDATED STATEMENTS OF INCOME"),
-        ("CONDENSED CONSOLIDATED STATEMENTS OF COMPREHENSIVE INCOME", "CONSOLIDATED STATEMENTS OF COMPREHENSIVE INCOME"),
-        ("CONDENSED CONSOLIDATED BALANCE SHEETS", "CONSOLIDATED BALANCE SHEETS"),
-        ("CONDENSED CONSOLIDATED STATEMENTS OF CASH FLOWS", "CONSOLIDATED STATEMENTS OF CASH FLOWS")
-    ]
-
-    for statement_variations in financial_statements:
-        for statement_text in statement_variations:
-            # Find the element containing the financial statement text
-            element = soup.find(string=re.compile(statement_text, re.IGNORECASE))
-
-            if element:
-                # Find the parent element containing the financial statement text
-                parent = element.find_parent()
-
-                if parent:
-                    # Check if there is an <a> tag with an href attribute within the parent element
-                    a_tag = parent.find("a", href=True)
-                    if a_tag:
-                        # Navigate to the target element specified by the href
-                        target_id = a_tag["href"].replace("#", "")
-                        target_element = soup.find(id=target_id)
-                        if target_element:
-                            table = target_element.find_next("table")
-                        else:
-                            table = None
-                    else:
-                        # Find the next table after the parent element
-                        table = parent.find_next("table")
-                else:
-                    table = None
-            else:
-                table = None
-
-            if table:
-                # Extract the table data
-                table_data = []
-                for row in table.find_all("tr"):
-                    row_data = [cell.text.strip() for cell in row.find_all(["th", "td"])]
-                    if any(row_data):
-                        table_data.append(row_data)
-
-                # Store the table data in the dictionary with the standardized key
-                standard_key = statement_variations[0]
-                tables[standard_key] = table_data
-                break
-            else:
-                print(f"Table not found for the financial statement: {statement_text}")
-
-    return tables
-
-def clean_balance_sheet(table_data):
-    # Remove empty strings from each row
-    cleaned_data = [[cell for cell in row if cell != ''] for row in table_data]
-
-    # Replace special characters or escape sequences
-    cleaned_data = [[re.sub(r'\xa0', ' ', cell) for cell in row] for row in cleaned_data]
-
-    # Extract timestamps
-    timestamps = [re.sub(r'[^a-zA-Z0-9\s]', '', cell) for cell in cleaned_data[0] if cell != '']
-
-    # Create column names for the DataFrame
-    column_names = ['Metric'] + timestamps
-
-    # Initialize an empty list to store the cleaned data
-    cleaned_rows = []
-
-    # Iterate over each row in the cleaned data (excluding the first row)
-    for row in cleaned_data[1:]:
-        metric = row[0]
-        values = row[1:]
-
-        # Remove any non-numeric characters (except for '-' and '.') from the values
-        cleaned_values = [re.sub(r'[^0-9\-.]', '', cell) for cell in values]
-
-        # Remove any nulls
-        cleaned_values = [val for val in cleaned_values if val != '']
-
-        # Pad the cleaned values with empty strings if necessary
-        padded_values = cleaned_values + [''] * (len(column_names) - len(cleaned_values) - 1)
-
-        # Append the metric and padded values to the cleaned rows
-        cleaned_rows.append([metric] + padded_values)
-
-    # Convert the cleaned rows to a pandas DataFrame
-    df = pd.DataFrame(cleaned_rows, columns=column_names)
-
-    # Set 'Metric' column as the index
-    df.set_index('Metric', inplace=True)
-
-    # Convert numeric values to float
-    for col in df.columns:
-        if col != 'Metric':
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-
-    return df
+    logging.info(f"Extracted data from {len(table_data)} tables")
+    return table_data
 
 
-def clean_income_statement(table_data):
-    """Parse the first column (current) of the CONDENSED CONSOLIDATED STATEMENTS OF OPERATIONS within a quarterly
-    report to a dataframe."""
-    # Remove empty strings from each row
-    cleaned_data = [[cell for cell in row if cell != ''] for row in table_data]
+def main(html_file):
+    logging.info("Starting table extraction process")
 
-    # Replace special characters or escape sequences
-    cleaned_data = [[re.sub(r'\xa0', ' ', cell) for cell in row] for row in cleaned_data]
+    # Convert HTML to PDF
+    pdf_file = "temp.pdf"
+    convert_html_to_pdf(html_file, pdf_file)
 
-    # Extract the current period and timestamp
-    current_period = cleaned_data[0][0].strip()
-    current_timestamp = re.sub(r'[^a-zA-Z0-9\s]', '', cleaned_data[1][0])
+    # Preprocess the PDF
+    # preprocess_pdf(pdf_file)
 
-    # Create column names for the DataFrame
-    column_names = ['Metric', f"{current_timestamp} ({current_period})"]
+    # Convert PDF to images
+    logging.info(f"Converting PDF file '{pdf_file}' to images")
+    images = convert_from_path(pdf_file)
+    logging.info(f"Converted PDF to {len(images)} images")
 
-    # Initialize an empty list to store the cleaned data
-    cleaned_rows = []
+    logging.info("Loading TableTransformer model and feature extractor")
+    model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
+    feature_extractor = DetrFeatureExtractor.from_pretrained("microsoft/table-transformer-detection")
 
-    # Iterate over each row in the cleaned data (excluding the first row)
-    for row in cleaned_data[2:]:
-        metric = row[0]
-        values = row[1:]
+    # Process each page image
+    for i, image in enumerate(images):
+        logging.info(f"Processing page {i + 1}/{len(images)}")
 
-        # Remove any non-numeric characters (except for '-' and '.') from the values
-        cleaned_values = [re.sub(r'[^0-9\-.]', '', cell) for cell in values]
+        # Resize the image
+        width, height = image.size
+        image = image.resize((int(width * 0.5), int(height * 0.5)))
 
-        # Remove any nulls
-        cleaned_values = [val for val in cleaned_values if val != '']
+        # Detect tables in the image
+        table_boxes = detect_tables(image, model, feature_extractor)
 
-        # Pad the cleaned values with empty strings if necessary
-        padded_values = cleaned_values + [''] * (len(column_names) - len(cleaned_values) - 1)
+        # Visualize table regions on the image
+        output_path = f"page{i + 1}_tables.png"
+        visualize_table_regions(image, table_boxes, output_path)
 
-        # Append the metric and padded values to the cleaned rows
-        cleaned_rows.append([metric] + [padded_values[0]])
+        # Extract table data using OCR
+        table_data = extract_table_data(image, table_boxes, i + 1)
 
-    # Convert the cleaned rows to a pandas DataFrame
-    df = pd.DataFrame(cleaned_rows, columns=column_names)
+        # Process the extracted table data as needed
+        for data in table_data:
+            print(data)
+            print("---")
 
-    # Set 'Metric' column as the index
-    df.set_index('Metric', inplace=True)
+    # Clean up temporary files
+    logging.info(f"Removing temporary PDF file '{pdf_file}'")
+    os.remove(pdf_file)
 
-    # Convert numeric values to float
-    for col in df.columns:
-        if col != 'Metric':
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-
-    return df
+    logging.info("Table extraction process completed")
 
 
-tables = extract_tables(soup)
+# Provide the path to your HTML file
+file_path = "sec-edgar-filings/GOOG/10-Q/0001652044-18-000035/primary-document.html"
+
+# Run the script
+main(file_path)
