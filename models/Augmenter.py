@@ -6,18 +6,13 @@ from glob import glob
 
 # Define the augmentation pipeline with specific transformations
 transform = A.Compose([
-    A.RandomBrightnessContrast(p=0.2),
-    A.RGBShift(r_shift_limit=20, g_shift_limit=20, b_shift_limit=20, p=1),
-    A.OneOf([
-        A.RandomRotate90(p=1.0),  # Rotates by 90, 180, or 270 degrees
-        A.HorizontalFlip(p=1.0),
-    ], p=1.0),
+    A.RandomBrightnessContrast(p=0.3),
+    A.RGBShift(r_shift_limit=30, g_shift_limit=30, b_shift_limit=30, p=1),
 ], bbox_params=A.BboxParams(format='coco', label_fields=['category_ids']))
 
 # Helper function to load JSON annotations
 
 
-# Helper function to load JSON annotations
 def load_json(json_file):
     with open(json_file) as f:
         return json.load(f)
@@ -44,10 +39,13 @@ def augment_dataset(base_dir):
         images = annotations['images']
         categories = annotations['categories']
         category_names = {cat['id']: cat['name'] for cat in categories}
-        annotations = annotations['annotations']
+        annotations_list = annotations['annotations']
 
         augmented_dir = os.path.join(dataset, 'augmented_tables')
         os.makedirs(augmented_dir, exist_ok=True)
+
+        augmented_images = []
+        augmented_annotations = []
 
         # Load images
         for img in images:
@@ -61,7 +59,7 @@ def augment_dataset(base_dir):
             # Extract corresponding annotations
             bboxes = []
             category_ids = []
-            for ann in annotations:
+            for ann in annotations_list:
                 if ann['image_id'] == img['id']:
                     bbox = ann['bbox']
                     bboxes.append(bbox)
@@ -82,14 +80,14 @@ def augment_dataset(base_dir):
             visualize_bboxes(transformed_image.copy(), transformed_bboxes, transformed_category_ids, category_names, qa_image_path)
 
             # Update JSON annotations for augmented image
-            new_img_id = len(images) + 1
+            new_img_id = len(augmented_images) + 1
             new_img_entry = {
                 "id": new_img_id,
                 "width": transformed_image.shape[1],
                 "height": transformed_image.shape[0],
                 "file_name": 'augmented_' + img['file_name']
             }
-            images.append(new_img_entry)
+            augmented_images.append(new_img_entry)
 
             for i, bbox in enumerate(transformed_bboxes):
                 x_min, y_min, width, height = bbox
@@ -101,19 +99,19 @@ def augment_dataset(base_dir):
                     width *= scale_x
                     height *= scale_y
                 new_ann_entry = {
-                    "id": len(annotations) + 1,
+                    "id": len(augmented_annotations) + 1,
                     "image_id": new_img_id,
                     "category_id": transformed_category_ids[i],
                     "bbox": [x_min, y_min, width, height],
                     "area": width * height,
                     "iscrowd": 0
                 }
-                annotations.append(new_ann_entry)
+                augmented_annotations.append(new_ann_entry)
 
         # Save the updated annotations
         new_annotation_file = os.path.join(augmented_dir, 'augmented_instances_default.json')
         with open(new_annotation_file, 'w') as f:
-            json.dump({"images": images, "annotations": annotations, "categories": categories}, f)
+            json.dump({"images": augmented_images, "annotations": augmented_annotations, "categories": categories}, f)
 
 # Path to the dataset directory
 base_dir = r"C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\AAPL\10-Q"

@@ -1,4 +1,5 @@
 import os
+import random
 from detectron2.engine import DefaultTrainer, DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2.data import MetadataCatalog
@@ -9,51 +10,60 @@ import cv2
 
 # Define the correct thing_classes
 thing_classes = [
-    "Current Data", "Historical Data", "Current Date", "Historical Date", "Financial Units", "Share Units",
-    "Metrics", "Three Months Ended", "Greater Than Three Months Ended"]
+    "Date", "Period", "Data Table", "Unit"]
 
 # Function to register datasets from multiple directories
 def register_datasets(base_dir):
     valid_datasets = []
     for root, dirs, files in os.walk(base_dir):
         for dir_name in dirs:
-            if dir_name == 'tables':
+            if dir_name in ['tables', 'augmented_tables']:
                 dataset_name = f"{root.replace(os.sep, '_')}_dataset"
-                json_file = os.path.join(root, 'instances_default.json')
-                image_root = os.path.join(root, 'tables')
+                json_file = os.path.join(root, 'annotations', 'instances_default.json')
+                image_root = os.path.join(root, dir_name)
                 if os.path.exists(json_file):
                     register_coco_instances(dataset_name, {}, json_file, image_root)
                     valid_datasets.append(dataset_name)
-            if dir_name == 'augmented_tables':
-                augmented_dataset_name = f"{root.replace(os.sep, '_')}_augmented_dataset"
-                augmented_json_file = os.path.join(root, 'augmented_tables', 'augmented_instances_default.json')
-                image_root = os.path.join(root, 'augmented_tables')
-                if os.path.exists(augmented_json_file):
-                    register_coco_instances(augmented_dataset_name, {}, augmented_json_file, image_root)
-                    valid_datasets.append(augmented_dataset_name)
+                if dir_name == 'augmented_tables':
+                    augmented_dataset_name = f"{root.replace(os.sep, '_')}_augmented_dataset"
+                    augmented_json_file = os.path.join(root, 'augmented_tables', 'augmented_instances_default.json')
+                    if os.path.exists(augmented_json_file):
+                        register_coco_instances(augmented_dataset_name, {}, augmented_json_file, image_root)
+                        valid_datasets.append(augmented_dataset_name)
     return valid_datasets
 
 # Register datasets
-base_dir = r"C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\AAPL\10-Q"
+base_dir = r"C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings"
 valid_datasets = register_datasets(base_dir)
 
+# Reserve a subset of datasets for validation
+random.shuffle(valid_datasets)
+validation_split = 0.1
+split_idx = int(len(valid_datasets) * validation_split)
+validation_datasets = valid_datasets[:split_idx]
+training_datasets = valid_datasets[split_idx:]
+
 # Verify registered datasets
-print("Registered Datasets:")
-for dataset in valid_datasets:
+print("Training Datasets:")
+for dataset in training_datasets:
+    print(dataset)
+
+print("Validation Datasets:")
+for dataset in validation_datasets:
     print(dataset)
 
 # Configure the model
 cfg = get_cfg()
 cfg.merge_from_file(model_zoo.get_config_file("COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"))
-cfg.DATASETS.TRAIN = valid_datasets  # Use only valid datasets
-cfg.DATASETS.TEST = ()  # No validation dataset in this example
+cfg.DATASETS.TRAIN = tuple(training_datasets)  # Use training datasets
+cfg.DATASETS.TEST = tuple(validation_datasets)  # Use validation datasets
 cfg.DATALOADER.NUM_WORKERS = 2
-cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
-    "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml")  # Use a pre-trained model
-cfg.SOLVER.IMS_PER_BATCH = 1
-cfg.SOLVER.BASE_LR = 0.0025
+cfg.MODEL.WEIGHTS = ''  # Use a pre-trained model
+
+cfg.SOLVER.IMS_PER_BATCH = 4
+cfg.SOLVER.BASE_LR = 0.00001
 cfg.SOLVER.MAX_ITER = 2500  # Increase the number of iterations
-cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128
+cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 256
 cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(thing_classes)  # Number of classes
 
 # Train the model
@@ -79,10 +89,10 @@ def perform_inference(image_path, cfg, output_path):
     result_image = out.get_image()[:, :, ::-1]
     cv2.imwrite(output_path, result_image)
     print(f"Result saved to {output_path}")
-#
-# # Example usage for inference
-# perform_inference(
-#     r"C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\AAPL\10-Q\0000320193-19-000010\tables\augmented_table_page5_table1.png",
-#     cfg,
-#     r"C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\AAPL\10-Q\0000320193-19-000010\tables\output.png"
-# )
+
+# Example usage for inference
+perform_inference(
+    r"C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\AAPL\10-Q\0000320193-20-000010\tables\table_page4_table1.png",
+    cfg,
+    r"C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\AAPL\10-Q\0000320193-20-000010\tables\output.png"
+)
