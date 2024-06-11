@@ -104,3 +104,4 @@ Thumbs.db
 # Logs
 logs
 sec-edgar-filings
+database/__pycache__/
