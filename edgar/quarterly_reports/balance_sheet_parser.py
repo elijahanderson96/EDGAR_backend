@@ -157,8 +157,15 @@ def detect_tables(image, model, feature_extractor, padding=250):
 #     return table_data
 
 
-def process_document(html_file):
+def process_document(html_file, output_dir):
     logging.info(f"Processing document: {html_file}")
+
+    # Extract the stock symbol from the path
+    parts = html_file.split(os.sep)
+    symbol = parts[1]  # Assuming the second part is the symbol
+
+    # Extract the report name from the path
+    report_name = parts[3]  # Assuming the fourth part is the report name
 
     # Convert HTML to PDF
     pdf_file = "temp.pdf"
@@ -173,10 +180,9 @@ def process_document(html_file):
     model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
     feature_extractor = DetrFeatureExtractor.from_pretrained("microsoft/table-transformer-detection")
 
-    # Create a directory to store table screenshots for the current document
-    document_dir = os.path.dirname(html_file)
-    tables_dir = os.path.join(document_dir, "tables")
-    os.makedirs(tables_dir, exist_ok=True)
+    # Create a directory to store table screenshots for the stock symbol
+    symbol_tables_dir = os.path.join(output_dir, symbol)
+    os.makedirs(symbol_tables_dir, exist_ok=True)
 
     # Process each page image
     for i, image in enumerate(images):
@@ -188,7 +194,7 @@ def process_document(html_file):
         # Visualize table regions on the image and save the screenshots
         for j, box in enumerate(table_boxes):
             table_image = image.crop(box)
-            output_path = os.path.join(tables_dir, f"table_page{i + 1}_table{j + 1}.png")
+            output_path = os.path.join(symbol_tables_dir, f"{report_name}_table_page{i + 1}_table{j + 1}.png")
             table_image.save(output_path)
             logging.info(f"Saved table screenshot: {output_path}")
 
@@ -197,19 +203,20 @@ def process_document(html_file):
     os.remove(pdf_file)
 
 
-def main():
+def main(symbol):
     logging.info("Starting table extraction process")
 
     # Directory containing the SEC Edgar filings
-    filings_dir = "sec-edgar-filings"
+    filings_dir = os.path.join("sec-edgar-filings", symbol)
+    output_dir = "tables"
 
-    # Traverse all subdirectories and find primary documents
+    # Traverse the symbol directory and find primary documents
     for root, dirs, files in os.walk(filings_dir):
         for file in files:
             if file == "primary-document.html":
                 html_file = os.path.join(root, file)
                 try:
-                    process_document(html_file)
+                    process_document(html_file, output_dir)
                 except Exception as e:
                     logging.error(f"Error processing document: {html_file}")
                     logging.error(str(e))
@@ -217,5 +224,7 @@ def main():
     logging.info("Table extraction process completed")
 
 
-# Run the script
-main()
+# Run the script for a specific symbol (e.g., AAPL)
+if __name__ == "__main__":
+    symbol = "COST"  # Change this to the desired stock symbol
+    main(symbol)

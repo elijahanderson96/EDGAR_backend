@@ -1,5 +1,5 @@
 import os
-import random
+from ultralytics import YOLO
 import cv2
 from sklearn.model_selection import train_test_split
 import shutil
@@ -48,7 +48,7 @@ def prepare_yolo_dataset(base_dir, output_dir):
                     logging.warning(f"Label file {label_file} does not exist for image {image}")
 
     # Split aggregated data into train, val, test
-    train_images, test_images = train_test_split(all_images, test_size=0.2, random_state=42)
+    train_images, test_images = train_test_split(all_images, test_size=0.1, random_state=42)
     val_images, test_images = train_test_split(test_images, test_size=0.5, random_state=42)
 
     splits = {
@@ -102,7 +102,6 @@ logging.info("Dataset preparation complete.")
 logging.info(f"data.yaml content:\n{data_yaml_content}")
 
 # Training YOLOv8
-from ultralytics import YOLO
 
 logging.info("Loading pre-trained YOLOv8 model...")
 model = YOLO('yolov8n.pt')
@@ -126,7 +125,7 @@ def perform_inference(image_path, model, output_path):
 
 # Example usage for inference
 perform_inference(
-    r"C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\AAPL\10-Q\0000320193-24-000069\tables\table_page4_table1.png",
+    r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\COST\0000909832-13-000011_table_page3_table1.png",
     model,
-    r"C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\AAPL\10-Q\0000320193-24-000069\tables\output.png"
+    r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\COST\0000909832-13-000011_table_page3_table1_labeled.png"
 )
