@@ -1,5 +1,5 @@
 import os
-
+import uuid
 from pdf2image import convert_from_path
 from transformers import TableTransformerForObjectDetection, DetrFeatureExtractor
 from PIL import ImageDraw
@@ -14,10 +14,7 @@ logging.basicConfig(level=logging.INFO)
 
 config = pdfkit.configuration(wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
 
-
 def convert_html_to_pdf(html_file, pdf_file, css_file=None, output_html_file=None):
-    # css_file = os.path.join(FILINGS_DIR, 'table_styler.css')
-    # output_html_file = './test.html'
     logging.info(f"Converting HTML file '{html_file}' to PDF")
 
     # Read the HTML file
@@ -60,14 +57,10 @@ def convert_html_to_pdf(html_file, pdf_file, css_file=None, output_html_file=Non
     pdfkit.from_string(styled_html, pdf_file, options=options, configuration=config)
     logging.info(f"PDF file '{pdf_file}' created successfully")
 
-
 def preprocess_pdf(pdf_file):
     logging.info(f"Preprocessing PDF file '{pdf_file}'")
     # Perform any necessary preprocessing on the PDF file
-    # This can include tasks like removing noise, enhancing contrast, etc.
-    # For simplicity, we'll skip this step in this example
     pass
-
 
 def detect_tables(image, model, feature_extractor, padding=250):
     logging.info("Detecting tables in the image")
@@ -101,62 +94,6 @@ def detect_tables(image, model, feature_extractor, padding=250):
 
     return padded_boxes
 
-
-# def extract_table_data(image, table_boxes, page_num, padding_x=25, padding_y=100):
-#     logging.info("Extracting table data using OCR")
-#     table_data = []
-#     reader = easyocr.Reader(['en'])  # Initialize EasyOCR reader for English language
-#
-#     for i, box in enumerate(table_boxes):
-#         # Convert bounding box coordinates to integers
-#         box = [round(coord) for coord in box]
-#
-#         # Extract coordinates from the bounding box
-#         x1, y1, x2, y2 = box
-#
-#         # Validate bounding box coordinates
-#         width, height = image.size
-#
-#         # Expand the bounding box by adding padding
-#         x1 = max(0, x1 - padding_x)
-#         y1 = max(0, y1 - padding_y)
-#         x2 = min(width, x2 + padding_x)
-#         y2 = min(height, y2 + padding_y)
-#
-#         logging.info(f"Table bounding box: ({x1}, {y1}, {x2}, {y2})")
-#         logging.info(f"Image dimensions: ({width}, {height})")
-#
-#         # Skip processing if the bounding box is invalid or too small
-#         if x2 <= x1 or y2 <= y1:
-#             logging.warning(f"Skipping table with invalid bounding box: ({x1}, {y1}, {x2}, {y2})")
-#             continue
-#
-#         # Crop the image to the table region
-#         table_image = image.crop((x1, y1, x2, y2))
-#
-#         # Save the cropped table image
-#         table_image_path = f"tmp_pdfs/table_page{page_num}_table{i + 1}.png"
-#         try:
-#             table_image.save(table_image_path)
-#             logging.info(f"Saved cropped table image: {table_image_path}")
-#         except Exception as e:
-#             logging.error(f"Error saving cropped table image: {str(e)}")
-#
-#         try:
-#             # Convert the PIL image to a numpy array
-#             table_image_np = np.array(table_image)
-#
-#             # Apply OCR to extract the text from the table image using EasyOCR
-#             results = reader.readtext(table_image_np, blocklist='$')
-#             table_text = '\n'.join([result[1] for result in results])
-#             table_data.append(table_text)
-#         except Exception as e:
-#             logging.error(f"Error during OCR: {str(e)}")
-#             continue
-#     logging.info(f"Extracted data from {len(table_data)} tables")
-#     return table_data
-
-
 def process_document(html_file, output_dir):
     logging.info(f"Processing document: {html_file}")
 
@@ -167,8 +104,8 @@ def process_document(html_file, output_dir):
     # Extract the report name from the path
     report_name = parts[3]  # Assuming the fourth part is the report name
 
-    # Convert HTML to PDF
-    pdf_file = "temp.pdf"
+    # Generate a unique name for the PDF file
+    pdf_file = f"temp_{uuid.uuid4().hex}.pdf"
     convert_html_to_pdf(html_file, pdf_file)
 
     # Convert PDF to images
@@ -186,6 +123,9 @@ def process_document(html_file, output_dir):
 
     # Process each page image
     for i, image in enumerate(images):
+        if i > 10:
+            break
+
         logging.info(f"Processing page {i + 1}/{len(images)}")
 
         # Detect tables in the image
@@ -201,7 +141,6 @@ def process_document(html_file, output_dir):
     # Clean up temporary files
     logging.info(f"Removing temporary PDF file '{pdf_file}'")
     os.remove(pdf_file)
-
 
 def main(symbol):
     logging.info("Starting table extraction process")
@@ -223,8 +162,7 @@ def main(symbol):
 
     logging.info("Table extraction process completed")
 
-
 # Run the script for a specific symbol (e.g., AAPL)
 if __name__ == "__main__":
-    symbol = "COST"  # Change this to the desired stock symbol
+    symbol = "CVX"  # Change this to the desired stock symbol
     main(symbol)

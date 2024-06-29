@@ -6,8 +6,7 @@ import pandas as pd
 from ultralytics import YOLO
 import logging
 import re
-from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
 class DataTableExtractor:
@@ -32,7 +31,8 @@ class DataTableExtractor:
         self.image_path = image_path
 
         # Our images are labeled simply. These are the labels we use to extract all relevant information from a table.
-        self.class_names = ['Data Table', 'Period', 'Unit', 'Date']
+        self.class_names = ["Current Assets", "Non Current Assets", "Current Liabilities", "Non Current Liabilities",
+                            "Equity", "Date", "Period", "Unit"]
         self.class_text_mapping = {}
 
         self.model = YOLO(model_path)
@@ -54,9 +54,11 @@ class DataTableExtractor:
             output_path (str): File path to output a labeled file. Pass this if you wish to see
             the bounding boxes the model outputs during inference.
         """
+        print(output_path)
         try:
             img = cv2.imread(self.image_path)
             results = self.model(img, conf=conf_threshold)
+            output_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\test_output.png"
 
             if not output_path:
                 return results
@@ -65,7 +67,6 @@ class DataTableExtractor:
                 result_img = results.plot()
                 result_output_path = os.path.splitext(output_path)[0] + f"_{i}.jpg"
                 cv2.imwrite(result_output_path, result_img)
-                logging.info(f"Result saved to {result_output_path}")
 
             logging.info(f"Inference results: {results}")
             return results
@@ -83,24 +84,34 @@ class DataTableExtractor:
         """
         try:
             image = cv2.imread(self.image_path)
+            boxes_with_classes = []
+
             for result in results:
                 for i, box in enumerate(result.boxes):
                     if box.conf[0] >= conf_threshold:  # Check confidence threshold
-                        x_min, y_min, x_max, y_max = map(int, box.xyxy[0])
-                        cropped_img = image[y_min:y_max, x_min:x_max]
-                        ocr_result = self.reader.readtext(cropped_img)
                         class_name = self.class_names[int(box.cls[0])]
-                        if class_name not in self.class_text_mapping:
-                            self.class_text_mapping[class_name] = []
+                        x_min, y_min, x_max, y_max = map(int, box.xyxy[0])
+                        boxes_with_classes.append((x_min, y_min, x_max, y_max, class_name))
 
-                        if class_name == 'Date':
-                            self._handle_date_class(ocr_result)
-                        elif class_name == 'Data Table':
-                            self._handle_data_table_class(ocr_result)
-                        elif class_name == 'Unit':
-                            self._handle_unit_class(ocr_result)
-                        elif class_name == 'Period':
-                            self._handle_period_class(ocr_result)
+            # Sort the boxes with class 'Date' by their x_min coordinate
+            boxes_with_classes.sort(key=lambda b: (b[4] == 'Date', b[0]))
+
+            for (x_min, y_min, x_max, y_max, class_name) in boxes_with_classes:
+                cropped_img = image[y_min:y_max, x_min:x_max]
+                ocr_result = self.reader.readtext(cropped_img)
+
+                if class_name not in self.class_text_mapping:
+                    self.class_text_mapping[class_name] = []
+
+                if class_name == 'Date':
+                    self._handle_date_class(ocr_result)
+
+                elif class_name in ['Current Assets', 'Non Current Assets', 'Current Liabilities',
+                                    'Non Current Liabilities', 'Equity']:
+                    self._handle_balance_sheet_class(ocr_result, class_name)
+
+                elif class_name == 'Unit':
+                    self._handle_unit_class(ocr_result)
 
             logging.info(f"Extracted text from bounding boxes: {self.class_text_mapping}")
         except Exception as e:
@@ -117,21 +128,6 @@ class DataTableExtractor:
         consolidated_text = " ".join([text for (bbox, text, prob) in ocr_result]).replace(',', '')
         self.class_text_mapping['Date'].append(consolidated_text)
 
-    def _handle_data_table_class(self, ocr_result):
-        """
-        Handles the 'Data Table' class by performing any necessary cleaning of the text.
-
-        Args:
-            ocr_result: OCR results from EasyOCR.
-        """
-        cleaned_texts = []
-        for (bbox, text, prob) in ocr_result:
-            if text in ('$', 'S'):
-                continue  # Remove the dollar sign
-            if '(' in text and ')' in text:
-                text = text.replace('(', '-').replace(')', '')  # Convert to negative number
-            cleaned_texts.append(text)
-        self.class_text_mapping['Data Table'].append(cleaned_texts)
 
     def _handle_unit_class(self, ocr_result):
         """
@@ -144,18 +140,6 @@ class DataTableExtractor:
         # Implement unit resolution logic here
         resolved_unit = self._resolve_unit(unit_texts)
         self.class_text_mapping['Unit'].append(resolved_unit)
-
-    def _handle_period_class(self, ocr_result):
-        """
-        Handles the 'Period' class by resolving the most current period.
-
-        Args:
-            ocr_result: OCR results from EasyOCR.
-        """
-        period_texts = [text for (bbox, text, prob) in ocr_result]
-        # Implement period resolution logic here
-        resolved_period = self._resolve_period(period_texts)
-        self.class_text_mapping['Period'].append(resolved_period)
 
     def _resolve_unit(self, unit_texts: List[str]) -> Dict[str, int]:
         """
@@ -177,87 +161,79 @@ class DataTableExtractor:
                 units['share_unit'] = 1000
         return units
 
-    def _resolve_period(self, period_texts: List[str]) -> str:
+    def _handle_balance_sheet_class(self, ocr_result, class_name):
         """
-        Resolves the most current period.
+        Handles balance sheet classes ('Current Assets', 'Non Current Assets', 'Current Liabilities',
+        'Non Current Liabilities', 'Equity') by parsing the OCR results into key-value pairs.
 
         Args:
-            period_texts (List[str]): List of texts extracted from the 'Period' class.
-
-        Returns:
-            str: The resolved period.
+            ocr_result: OCR results from EasyOCR.
+            class_name (str): The class name to handle.
         """
-        # Example implementation, customize this based on your requirements
-        current_period = ""
-        for text in period_texts:
-            if 'weeks ended' in text.lower():
-                current_period = text
-                break
-            elif 'months ended' in text.lower():
-                current_period = text
-        return current_period
+        # Collect all text into a list
+        all_texts = []
+        for (bbox, text, prob) in ocr_result:
+            text = text.replace('$', '').replace(',', '').strip()
+            if text and text != 'S':
+                all_texts.append(text)
 
-    def data_table_to_dataframe(self):
-        """
-        Converts the extracted data table into a pandas DataFrame using 'Date' values as column headers.
-        """
-        try:
-            data_table = self.class_text_mapping.get('Data Table', [])
-            dates = self.class_text_mapping.get('Date', [])
-            if not data_table or not data_table[0] or not dates:
-                raise ValueError("No data table or dates found in the extracted text.")
+        # Parse the list to create key-value pairs
+        parsed_data = {}
+        current_key = None
+        numeric_pattern = re.compile(r'^-?\d+(,\d{3})*(\.\d+)?$')
 
-            # Flatten the list of lists into a single list
-            flat_list = data_table[0]
-
-            # Initialize lists to store the parsed table data
-            row_headers = []
-            row_data = []
-            current_header = None
-
-            numeric_pattern = re.compile(r'^-?\d+(,\d{3})*(\.\d+)?$')
-
-            # Iterate over the flat list to populate row_headers and row_data
-            for item in flat_list:
-                print(f"Item: {item}, Type: {type(item)}")
-                # Check if the item is numeric
-                if numeric_pattern.match(item.replace(',', '')):
-                    row_data[-1].append(item)
+        i = 0
+        while i < len(all_texts):
+            text = all_texts[i]
+            if numeric_pattern.match(text.replace(',', '')):
+                # This is a numeric value
+                if current_key:
+                    if current_key not in parsed_data:
+                        parsed_data[current_key] = []
+                    parsed_data[current_key].append(text)
+                    # Check if the next item is also a numeric value
+                    if i + 1 < len(all_texts) and numeric_pattern.match(all_texts[i + 1].replace(',', '')):
+                        parsed_data[current_key].append(all_texts[i + 1])
+                        i += 1  # Move to the next item after the second numeric value
+                    current_key = None
+            else:
+                # This is a key (column title)
+                if current_key:
+                    # Append to the existing key
+                    current_key += ' ' + text
                 else:
-                    current_header = item
-                    row_headers.append(current_header)
-                    row_data.append([])
+                    current_key = text
 
-            # Create a DataFrame
-            df = pd.DataFrame(row_data, index=row_headers, columns=dates)
+                # Check if the next item is a continuation of the current key
+                if i + 1 < len(all_texts) and not numeric_pattern.match(all_texts[i + 1].replace(',', '')):
+                    current_key += ' ' + all_texts[i + 1]
+                    i += 1  # Move to the next item after the continuation
 
-            # Convert numeric columns to appropriate data types
-            for col in dates:
-                df[col] = pd.to_numeric(df[col].str.replace(',', '').str.replace('(', '-').str.replace(')', ''),
-                                        errors='coerce')
+            i += 1
 
-            logging.info(f"Data Table DataFrame:\n{df}")
-            return df
-        except Exception as e:
-            logging.error(f"Error converting data table to DataFrame: {e}")
-            raise
+        self.class_text_mapping[class_name].append(parsed_data)
+
 
     def run(self):
-        results = self.perform_inference()
+        results = self.perform_inference(output_path=r'C:\Users\Elijah\PycharmProjects\edgar_backend\image')
         self.extract_text_from_bounding_boxes(results)
-        df = self.data_table_to_dataframe()
+        # df = self.data_table_to_dataframe()
+        # return df
+
 
 if __name__ == "__main__":
+    # blood, sweat, and fucking tears.
     # import argparse
     #
     # parser = argparse.ArgumentParser(description="YOLOv8 Data Table Extraction")
     # parser.add_argument("--model_path", type=str, required=True, help="Path to the YOLOv8 model file.")
     # parser.add_argument("--image_path", type=str, required=True, help="Path to the image file")
     # args = parser.parse_args()
-    #
+    # a
     # extractor = DataTableExtractor(model_path=args.model_path, image_path=args.image_path)
 
-    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train4\weights\best.pt"
-    #image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\COST\0000909832-13-000011_table_page4_table1.png"
-    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\COST\0000909832-13-000011_table_page5_table1.png"
+    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train14\weights\best.pt"
+    # image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\COST\0000909832-13-000011_table_page4_table1.png"
+    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\CSCO\0000858877-13-000013_table_page3_table1.png"
     self = DataTableExtractor(model_path=model_path, image_path=image_path)
+    # frame = self.run()
