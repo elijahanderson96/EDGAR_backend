@@ -32,7 +32,7 @@ def perform_inference(image_path, model, output_path):
 
 # Example usage for inference
 perform_inference(
-    r"C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset_balance_sheets\images\train\0001018724-19-000071_table_page6_table1.png",
+    r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\AAPL\0000320193-18-000070_table_page5_table1.png",
     model,
     r"C:\Users\Elijah\PycharmProjects\edgar_backend\test.png"
 )

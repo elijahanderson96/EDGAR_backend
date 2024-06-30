@@ -1,7 +1,0 @@
-
-train: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset/images/train
-val: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset/images/val
-test: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset/images/test
-
-nc: 4
-names: ["Data Table", "Period", "Unit", "Date"]

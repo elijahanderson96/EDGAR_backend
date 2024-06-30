@@ -303,6 +303,6 @@ if __name__ == "__main__":
 
     model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train14\weights\best.pt"
     # image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\CSCO\0000858877-13-000013_table_page3_table1.png"
-    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\AAPL\0000320193-17-000009_table_page5_table1.png"
+    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\AAPL\0000320193-18-000070_table_page5_table1.png"
     self = DataTableExtractor(model_path=model_path, image_path=image_path)
     frame = self.run()
