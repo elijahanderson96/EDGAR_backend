@@ -10,7 +10,7 @@ import re
 from typing import Dict, List
 
 
-class DataTableExtractor:
+class BalanceSheetExtractor:
     """
     DataTableExtractor class for extracting information from a data table in an image using YOLOv8 and EasyOCR.
 
@@ -20,13 +20,15 @@ class DataTableExtractor:
         class_text_mapping (Dict[str, List[List[str]]]): Mapping of class names to lists of OCR extracted text.
     """
 
-    def __init__(self, model_path: str, image_path: str):
+    def __init__(self, model_path: str, image_path: str, model_type: str):
         """
         Initializes the DataTableExtractor with the given model and image paths.
 
         Args:
             model_path (str): Path to the YOLOv8 model.
             image_path (str): Path to the image file.
+            model_type (str): Can be one of "balance_sheet", "cash_flow", or "income". This enum type is used to
+            determine which class_names to use.
         """
         self.model_path = model_path
         self.image_path = image_path
@@ -40,12 +42,6 @@ class DataTableExtractor:
         logging.info(f"Model loaded from {model_path}.")
         self.reader = easyocr.Reader(['en'])
 
-        # current_column_coords indicates the most recent reported data within a table. Often times reports will compare
-        # past data to current data to show growth, we are only interested in the current report. We can access
-        # historical data within our database.
-        self.current_column_coords = None
-        self.max_date = None
-
     def perform_inference(self, conf_threshold: float = 0.25, output_path: str = None):
         """
         Performs inference on the image to detect bounding boxes.
@@ -55,7 +51,6 @@ class DataTableExtractor:
             output_path (str): File path to output a labeled file. Pass this if you wish to see
             the bounding boxes the model outputs during inference.
         """
-        print(output_path)
         try:
             img = cv2.imread(self.image_path)
             results = self.model(img, conf=conf_threshold)
@@ -127,7 +122,7 @@ class DataTableExtractor:
             ocr_result: OCR results from EasyOCR.
         """
         consolidated_text = " ".join([text for (bbox, text, prob) in ocr_result]).replace(',', '')
-        print(consolidated_text)
+
         # Regular expressions for various date formats
         date_patterns = [
             r'(\d{2}/\d{2}/\d{4})',  # MM/DD/YYYY
@@ -138,7 +133,6 @@ class DataTableExtractor:
             r'(\d{1,2} \b\w+ \d{4}\b)',  # Day Month Year
             r'(\b\w+ \d{1,2} \d{4}\b)'  # Month Day Year
         ]
-        print('date patterns')
         dates = []
         for pattern in date_patterns:
             matches = re.findall(pattern, consolidated_text)
@@ -261,7 +255,7 @@ class DataTableExtractor:
                 # Check if the next item is a continuation of the current key
                 if i + 1 < len(all_texts) and not (
                         numeric_pattern.match(all_texts[i + 1].replace(',', '')) or negative_pattern.match(
-                        all_texts[i + 1].replace(',', ''))):
+                    all_texts[i + 1].replace(',', ''))):
                     current_key += ' ' + all_texts[i + 1]
                     i += 1  # Move to the next item after the continuation
 
@@ -293,16 +287,16 @@ class DataTableExtractor:
 
 
 if __name__ == "__main__":
-    # import argparse
-    #
-    # parser = argparse.ArgumentParser(description="YOLOv8 Data Table Extraction")
-    # parser.add_argument("--model_path", type=str, required=True, help="Path to the YOLOv8 model file.")
-    # parser.add_argument("--image_path", type=str, required=True, help="Path to the image file")
-    # args = parser.parse_args()
-    # extractor = DataTableExtractor(model_path=args.model_path, image_path=args.image_path)
+    import argparse
 
-    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train14\weights\best.pt"
-    # image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\CSCO\0000858877-13-000013_table_page3_table1.png"
-    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\AAPL\0000320193-18-000070_table_page5_table1.png"
-    self = DataTableExtractor(model_path=model_path, image_path=image_path)
-    frame = self.run()
+    parser = argparse.ArgumentParser(description="YOLOv8 Data Table Extraction")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to the YOLOv8 model file.")
+    parser.add_argument("--image_path", type=str, required=True, help="Path to the image file")
+    args = parser.parse_args()
+    extractor = BalanceSheetExtractor(model_path=args.model_path, image_path=args.image_path)
+    frame = extractor.run()
+
+    # model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train15\weights\best.pt"
+    # image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\AAPL\0000320193-18-000070_table_page5_table1.png"
+    # self = BalanceSheetExtractor(model_path=model_path, image_path=image_path)
+    # frame = self.run()

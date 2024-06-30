@@ -16,6 +16,8 @@ config = pdfkit.configuration(wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkh
 
 def convert_html_to_pdf(html_file, pdf_file, css_file=None, output_html_file=None):
     logging.info(f"Converting HTML file '{html_file}' to PDF")
+    css_file = r'C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\table_styler.css'
+    output_html_file=rf'C:\Users\Elijah\PycharmProjects\edgar_backend\{uuid.uuid4().hex}.html'
 
     # Read the HTML file
     with open(html_file, 'r', encoding='utf-8') as f:
@@ -164,5 +166,5 @@ def main(symbol):
 
 # Run the script for a specific symbol (e.g., AAPL)
 if __name__ == "__main__":
-    symbol = "CVX"  # Change this to the desired stock symbol
+    symbol = "CAT"  # Change this to the desired stock symbol
     main(symbol)
