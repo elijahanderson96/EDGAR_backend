@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 import cv2
 import easyocr
@@ -120,14 +121,54 @@ class DataTableExtractor:
 
     def _handle_date_class(self, ocr_result):
         """
-        Handles the 'Date' class by consolidating all list elements into a single string and stripping any commas.
+        Handles the 'Date' class by consolidating all list elements into a single string and normalizing dates.
 
         Args:
             ocr_result: OCR results from EasyOCR.
         """
         consolidated_text = " ".join([text for (bbox, text, prob) in ocr_result]).replace(',', '')
-        self.class_text_mapping['Date'].append(consolidated_text)
+        print(consolidated_text)
+        # Regular expressions for various date formats
+        date_patterns = [
+            r'(\d{2}/\d{2}/\d{4})',  # MM/DD/YYYY
+            r'(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY
+            r'(\d{4}/\d{2}/\d{2})',  # YYYY/MM/DD
+            r'(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD
+            r'(\b\w+ \d{1,2}, \d{4}\b)',  # Month Day, Year
+            r'(\d{1,2} \b\w+ \d{4}\b)',  # Day Month Year
+            r'(\b\w+ \d{1,2} \d{4}\b)'  # Month Day Year
+        ]
+        print('date patterns')
+        dates = []
+        for pattern in date_patterns:
+            matches = re.findall(pattern, consolidated_text)
+            for match in matches:
+                try:
+                    print(match)
+                    # Try to parse the date and convert to a standard format (YYYY-MM-DD)
+                    normalized_date = self._normalize_date(match)
+                    dates.append(normalized_date)
+                except ValueError:
+                    continue
 
+        self.class_text_mapping['Date'].extend(dates) if dates else None
+
+    def _normalize_date(self, date_str):
+        """
+        Normalizes a date string to the format YYYY-MM-DD.
+
+        Args:
+            date_str (str): The date string to normalize.
+
+        Returns:
+            str: The normalized date string.
+        """
+        for fmt in ('%m/%d/%Y', '%m-%d/%Y', '%Y/%m/%d', '%Y-%m-%d', '%B %d, %Y', '%d %B %Y', '%B %d %Y'):
+            try:
+                return datetime.strptime(date_str, fmt).strftime('%Y-%m-%d')
+            except ValueError:
+                pass
+        raise ValueError(f'Unknown date format: {date_str}')
 
     def _handle_unit_class(self, ocr_result):
         """
@@ -181,6 +222,7 @@ class DataTableExtractor:
         parsed_data = {}
         current_key = None
         numeric_pattern = re.compile(r'^-?\d+(,\d{3})*(\.\d+)?$')
+        negative_pattern = re.compile(r'^\((\d+(,\d{3})*(\.\d+)?)\)$')
 
         i = 0
         while i < len(all_texts):
@@ -196,6 +238,18 @@ class DataTableExtractor:
                         parsed_data[current_key].append(all_texts[i + 1])
                         i += 1  # Move to the next item after the second numeric value
                     current_key = None
+            elif negative_pattern.match(text.replace(',', '')):
+                # This is a negative numeric value
+                negative_value = '-' + negative_pattern.match(text.replace(',', '')).group(1)
+                if current_key:
+                    if current_key not in parsed_data:
+                        parsed_data[current_key] = []
+                    parsed_data[current_key].append(negative_value)
+                    # Check if the next item is also a numeric value
+                    if i + 1 < len(all_texts) and numeric_pattern.match(all_texts[i + 1].replace(',', '')):
+                        parsed_data[current_key].append(all_texts[i + 1])
+                        i += 1  # Move to the next item after the second numeric value
+                    current_key = None
             else:
                 # This is a key (column title)
                 if current_key:
@@ -205,7 +259,9 @@ class DataTableExtractor:
                     current_key = text
 
                 # Check if the next item is a continuation of the current key
-                if i + 1 < len(all_texts) and not numeric_pattern.match(all_texts[i + 1].replace(',', '')):
+                if i + 1 < len(all_texts) and not (
+                        numeric_pattern.match(all_texts[i + 1].replace(',', '')) or negative_pattern.match(
+                        all_texts[i + 1].replace(',', ''))):
                     current_key += ' ' + all_texts[i + 1]
                     i += 1  # Move to the next item after the continuation
 
@@ -213,27 +269,40 @@ class DataTableExtractor:
 
         self.class_text_mapping[class_name].append(parsed_data)
 
+    def create_balance_sheet_dataframe(self):
+        frames = ['Current Assets', 'Non Current Assets', 'Current Liabilities', 'Non Current Liabilities', 'Equity']
+        dfs = []
+
+        for frame in frames:
+            try:
+                dfs.append(pd.DataFrame(self.class_text_mapping[frame][0], index=self.class_text_mapping['Date']).T)
+                print(f"Found {frame} inside the document. Adding it to list of frames.")
+            except KeyError as e:
+                print(f"Could not find {frame}, it was likely not detected within the table and therefore cannot"
+                      f"be extracted. Skipping.")
+
+        balance_sheet = pd.concat(dfs)
+
+        return balance_sheet
 
     def run(self):
         results = self.perform_inference(output_path=r'C:\Users\Elijah\PycharmProjects\edgar_backend\image')
         self.extract_text_from_bounding_boxes(results)
-        # df = self.data_table_to_dataframe()
-        # return df
+        results = self.create_balance_sheet_dataframe()
+        return results
 
 
 if __name__ == "__main__":
-    # blood, sweat, and fucking tears.
     # import argparse
     #
     # parser = argparse.ArgumentParser(description="YOLOv8 Data Table Extraction")
     # parser.add_argument("--model_path", type=str, required=True, help="Path to the YOLOv8 model file.")
     # parser.add_argument("--image_path", type=str, required=True, help="Path to the image file")
     # args = parser.parse_args()
-    # a
     # extractor = DataTableExtractor(model_path=args.model_path, image_path=args.image_path)
 
     model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train14\weights\best.pt"
-    # image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\COST\0000909832-13-000011_table_page4_table1.png"
-    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\CSCO\0000858877-13-000013_table_page3_table1.png"
+    # image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\CSCO\0000858877-13-000013_table_page3_table1.png"
+    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\AAPL\0000320193-17-000009_table_page5_table1.png"
     self = DataTableExtractor(model_path=model_path, image_path=image_path)
-    # frame = self.run()
+    frame = self.run()
