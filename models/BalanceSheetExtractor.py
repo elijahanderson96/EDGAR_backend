@@ -1,5 +1,3 @@
-import os
-from datetime import datetime
 from statistics import median
 
 import cv2
@@ -8,7 +6,6 @@ import numpy as np
 import pandas as pd
 from ultralytics import YOLO
 import logging
-import re
 from typing import Dict, List
 
 
@@ -116,15 +113,27 @@ class Extract:
                         x_min, y_min, x_max, y_max = map(int, box.xyxy[0])
                         boxes_with_classes.append((x_min, y_min, x_max, y_max, class_name))
 
-            # Sort the boxes with class 'Column Title' and 'Column Group Title' by their x_min coordinate
-            boxes_with_classes.sort(key=lambda b: (b[4] in ['Column Title'], b[0]))
+            # Separate boxes by class for sorting
+            column_title_boxes = [box for box in boxes_with_classes if box[4] == 'Column Title']
+            column_group_title_boxes = [box for box in boxes_with_classes if box[4] == 'Column Group Title']
+            data_boxes = [box for box in boxes_with_classes if box[4] == 'Data']
+            unit_boxes = [box for box in boxes_with_classes if box[4] == 'Unit']
 
-            for (x_min, y_min, x_max, y_max, class_name) in boxes_with_classes:
+            # Sort the boxes with class 'Column Title' and 'Column Group Title' by their x_min coordinate (left to right)
+            column_title_boxes.sort(key=lambda b: b[0])
+            column_group_title_boxes.sort(key=lambda b: b[0])
+
+            # Sort data and unit boxes by their y_min coordinate (top to bottom)
+            data_boxes.sort(key=lambda b: b[1])
+            unit_boxes.sort(key=lambda b: b[1])
+
+            # Combine sorted lists maintaining the order
+            sorted_boxes_with_classes = column_title_boxes + column_group_title_boxes + data_boxes + unit_boxes
+
+            for (x_min, y_min, x_max, y_max, class_name) in sorted_boxes_with_classes:
                 if class_name == 'Data':
                     x_min = int(x_min * .9)
                     x_max = int(x_max * 1.1)
-                    y_min = int(y_min * .98)
-                    y_max = int(y_max * 1.02)
 
                 cropped_img = image[y_min:y_max, x_min:x_max]
                 ocr_result = self.reader.readtext(cropped_img)
@@ -154,54 +163,7 @@ class Extract:
             ocr_result: OCR results from EasyOCR.
         """
         consolidated_text = " ".join([text for (bbox, text, prob) in ocr_result]).replace(',', '')
-        # for bbox, text, prob in ocr_result:
-        #     print(text)
-        #     input('')
-        # print(f"Consolidated text is: {consolidated_text}")
-        #
-        # # Regular expressions for various date formats
-        # date_patterns = [
-        #     r'(\d{2}/\d{2}/\d{4})',  # MM/DD/YYYY
-        #     r'(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY
-        #     r'(\d{4}/\d{2}/\d{2})',  # YYYY/MM/DD
-        #     r'(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD
-        #     r'(\b\w+ \d{1,2}, \d{4}\b)',  # Month Day, Year
-        #     r'(\d{1,2} \b\w+ \d{4}\b)',  # Day Month Year
-        #     r'(\b\w+ \d{1,2} \d{4}\b)',  # Month Day Year
-        #     r'(\b\w+ \d{4}\b) \d{1,2}'  # Month  Year Day
-        #
-        # ]
-        # dates = []
-        # for pattern in date_patterns:
-        #     matches = re.findall(pattern, consolidated_text)
-        #     for match in matches:
-        #         try:
-        #             # Try to parse the date and convert to a standard format (YYYY-MM-DD)
-        #             normalized_date = self._normalize_date(match)
-        #             print(normalized_date)
-        #             input("Break")
-        #             dates.append(normalized_date)
-        #         except ValueError:
-        #             continue
-
         self.class_text_mapping['Column Title'].append(consolidated_text)
-
-    def _normalize_date(self, date_str):
-        """
-        Normalizes a date string to the format YYYY-MM-DD.
-
-        Args:
-            date_str (str): The date string to normalize.
-
-        Returns:
-            str: The normalized date string.
-        """
-        for fmt in ('%m/%d/%Y', '%m-%d/%Y', '%Y/%m/%d', '%Y-%m-%d', '%B %d, %Y', '%d %B %Y', '%B %d %Y', '%B %Y %d'):
-            try:
-                return datetime.strptime(date_str, fmt).strftime('%Y-%m-%d')
-            except ValueError:
-                pass
-        raise ValueError(f'Unknown date format: {date_str}')
 
     def _handle_unit_class(self, ocr_result):
         """
@@ -242,7 +204,10 @@ class Extract:
         current_key = None
 
         for text in all_texts:
-            if text.isdigit():  # If the text is a number
+            # Check if the text is a numerical value surrounded by parentheses
+            if text.startswith('(') and text.endswith(')') and text[1:-1].isdigit():
+                text = '-' + text[1:-1]  # Convert to negative value
+            if text.isdigit() or (text.startswith('-') and text[1:].isdigit()):  # If the text is a number
                 if current_key:
                     if current_key not in parsed_data:
                         parsed_data[current_key] = []
@@ -256,40 +221,26 @@ class Extract:
         data_entries = self.class_text_mapping['Data']
         column_titles = self.class_text_mapping['Column Title']
 
-        # Ensure there are data entries and column titles
         if not data_entries or not column_titles:
             raise ValueError("Data entries or Column Titles are missing")
 
-        # Determine the length of each data entry
-        lengths = [len(next(iter(entry.values()))) for entry in data_entries]
+        lengths = [len(value) for entry in data_entries for value in entry.values()]
 
-        # Calculate the median length
         median_length = int(median(lengths))
 
-        # Filter out entries that do not match the median length
-        filtered_entries = [entry for entry in data_entries if len(entry.values()) == median_length]
+        # Sometimes a report will only have 1 of 2 or 1 of 4 columns populated with data. We are going to ignore t
+        # these entries for simplicity for now. Perhaps in the future we can find a reliable means to parse them
+        # into the frame, but for now, we're omitting.
+        filtered_entries = {key: value for entry in data_entries for key, value in entry.items() if
+                            len(value) == median_length}
 
-        # Ensure the length of the column titles matches the expected number of columns
         expected_num_columns = len(next(iter(data_entries[0].values())))
+
         if len(column_titles) != expected_num_columns:
             raise ValueError(
                 f"Length mismatch: Expected {expected_num_columns} column titles, got {len(column_titles)}")
 
-        # Prepare a list to collect DataFrames
-        dataframes = []
-
-        # Process each data entry to construct a DataFrame
-        for entry in filtered_entries:
-            df = pd.DataFrame(entry)
-            dataframes.append(df)
-
-        # Concatenate all DataFrames
-        concatenated_df = pd.concat(dataframes, axis=1).T.drop_duplicates()
-
-        # Assign column titles
-        concatenated_df.columns = column_titles
-
-        return concatenated_df
+        return pd.DataFrame(filtered_entries, index=self.class_text_mapping['Column Title']).T
 
     def run(self):
         results = self.perform_inference(output_path=r'C:\Users\Elijah\PycharmProjects\edgar_backend\image')
