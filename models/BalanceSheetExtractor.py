@@ -1,8 +1,10 @@
 import os
 from datetime import datetime
+from statistics import median
 
 import cv2
 import easyocr
+import numpy as np
 import pandas as pd
 from ultralytics import YOLO
 import logging
@@ -10,9 +12,9 @@ import re
 from typing import Dict, List
 
 
-class BalanceSheetExtractor:
+class Extract:
     """
-    DataTableExtractor class for extracting information from a data table in an image using YOLOv8 and EasyOCR.
+    Extract class for extracting information from a data table in an image using YOLOv8 and EasyOCR.
 
     Attributes:
         model_path (str): Path to the YOLOv8 model.
@@ -20,29 +22,27 @@ class BalanceSheetExtractor:
         class_text_mapping (Dict[str, List[List[str]]]): Mapping of class names to lists of OCR extracted text.
     """
 
-    def __init__(self, model_path: str, image_path: str, model_type: str):
+    def __init__(self, model_path: str, image_path: str):
         """
         Initializes the DataTableExtractor with the given model and image paths.
 
         Args:
             model_path (str): Path to the YOLOv8 model.
             image_path (str): Path to the image file.
-            model_type (str): Can be one of "balance_sheet", "cash_flow", or "income". This enum type is used to
-            determine which class_names to use.
+
         """
         self.model_path = model_path
         self.image_path = image_path
 
         # Our images are labeled simply. These are the labels we use to extract all relevant information from a table.
-        self.class_names = ["Current Assets", "Non Current Assets", "Current Liabilities", "Non Current Liabilities",
-                            "Equity", "Date", "Period", "Unit"]
-        self.class_text_mapping = {}
+        self.class_names = ["Unit", "Data", "Column Title", "Column Group Title"]
+        self.class_text_mapping = {class_name: [] for class_name in self.class_names}
 
         self.model = YOLO(model_path)
         logging.info(f"Model loaded from {model_path}.")
         self.reader = easyocr.Reader(['en'])
 
-    def perform_inference(self, conf_threshold: float = 0.25, output_path: str = None):
+    def perform_inference(self, conf_threshold: float = 0.35, output_path: str = None):
         """
         Performs inference on the image to detect bounding boxes.
 
@@ -56,13 +56,40 @@ class BalanceSheetExtractor:
             results = self.model(img, conf=conf_threshold)
             output_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\test_output.png"
 
-            if not output_path:
-                return results
+            # Define colors for each class
+            colors = {
+                "Unit": (255, 0, 0),  # Red
+                "Data": (0, 255, 0),  # Green
+                "Column Title": (0, 0, 255),  # Blue
+                "Column Group Title": (255, 255, 0)  # Cyan
+            }
 
-            for i, results in enumerate(results):
-                result_img = results.plot()
-                result_output_path = os.path.splitext(output_path)[0] + f"_{i}.jpg"
-                cv2.imwrite(result_output_path, result_img)
+            # Create a copy of the image to draw bounding boxes
+            img_with_boxes = img.copy()
+
+            for result in results:
+                for box in result.boxes:
+                    class_name = self.class_names[int(box.cls[0])]
+                    color = colors.get(class_name, (255, 255, 255))  # Default to white if class is not found
+
+                    x_min, y_min, x_max, y_max = map(int, box.xyxy[0].tolist())
+                    cv2.rectangle(img_with_boxes, (x_min, y_min), (x_max, y_max), color, 2)
+
+            # Create a legend image
+            legend_height = 100
+            legend = np.zeros((legend_height, img.shape[1], 3), dtype=np.uint8)
+
+            y_offset = 10
+            for class_name, color in colors.items():
+                cv2.putText(legend, class_name, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                y_offset += 20
+
+            # Concatenate the legend at the bottom of the image
+            img_with_legend = np.vstack((img_with_boxes, legend))
+
+            # Save the resulting image
+            result_output_path = output_path or r"C:\Users\Elijah\PycharmProjects\edgar_backend\test_output.png"
+            cv2.imwrite(result_output_path, img_with_legend)
 
             logging.info(f"Inference results: {results}")
             return results
@@ -89,25 +116,30 @@ class BalanceSheetExtractor:
                         x_min, y_min, x_max, y_max = map(int, box.xyxy[0])
                         boxes_with_classes.append((x_min, y_min, x_max, y_max, class_name))
 
-            # Sort the boxes with class 'Date' by their x_min coordinate
-            boxes_with_classes.sort(key=lambda b: (b[4] == 'Date', b[0]))
+            # Sort the boxes with class 'Column Title' and 'Column Group Title' by their x_min coordinate
+            boxes_with_classes.sort(key=lambda b: (b[4] in ['Column Title'], b[0]))
 
             for (x_min, y_min, x_max, y_max, class_name) in boxes_with_classes:
+                if class_name == 'Data':
+                    x_min = int(x_min * .9)
+                    x_max = int(x_max * 1.1)
+                    y_min = int(y_min * .98)
+                    y_max = int(y_max * 1.02)
+
                 cropped_img = image[y_min:y_max, x_min:x_max]
                 ocr_result = self.reader.readtext(cropped_img)
 
-                if class_name not in self.class_text_mapping:
-                    self.class_text_mapping[class_name] = []
-
-                if class_name == 'Date':
+                if class_name == 'Column Title':
                     self._handle_date_class(ocr_result)
 
-                elif class_name in ['Current Assets', 'Non Current Assets', 'Current Liabilities',
-                                    'Non Current Liabilities', 'Equity']:
-                    self._handle_balance_sheet_class(ocr_result, class_name)
+                elif class_name == 'Data':
+                    self.handle_data(ocr_result)
 
                 elif class_name == 'Unit':
                     self._handle_unit_class(ocr_result)
+
+                elif class_name == 'Column Group Title':
+                    self.class_text_mapping[class_name].extend([text for (bbox, text, prob) in ocr_result])
 
             logging.info(f"Extracted text from bounding boxes: {self.class_text_mapping}")
         except Exception as e:
@@ -122,30 +154,37 @@ class BalanceSheetExtractor:
             ocr_result: OCR results from EasyOCR.
         """
         consolidated_text = " ".join([text for (bbox, text, prob) in ocr_result]).replace(',', '')
+        # for bbox, text, prob in ocr_result:
+        #     print(text)
+        #     input('')
+        # print(f"Consolidated text is: {consolidated_text}")
+        #
+        # # Regular expressions for various date formats
+        # date_patterns = [
+        #     r'(\d{2}/\d{2}/\d{4})',  # MM/DD/YYYY
+        #     r'(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY
+        #     r'(\d{4}/\d{2}/\d{2})',  # YYYY/MM/DD
+        #     r'(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD
+        #     r'(\b\w+ \d{1,2}, \d{4}\b)',  # Month Day, Year
+        #     r'(\d{1,2} \b\w+ \d{4}\b)',  # Day Month Year
+        #     r'(\b\w+ \d{1,2} \d{4}\b)',  # Month Day Year
+        #     r'(\b\w+ \d{4}\b) \d{1,2}'  # Month  Year Day
+        #
+        # ]
+        # dates = []
+        # for pattern in date_patterns:
+        #     matches = re.findall(pattern, consolidated_text)
+        #     for match in matches:
+        #         try:
+        #             # Try to parse the date and convert to a standard format (YYYY-MM-DD)
+        #             normalized_date = self._normalize_date(match)
+        #             print(normalized_date)
+        #             input("Break")
+        #             dates.append(normalized_date)
+        #         except ValueError:
+        #             continue
 
-        # Regular expressions for various date formats
-        date_patterns = [
-            r'(\d{2}/\d{2}/\d{4})',  # MM/DD/YYYY
-            r'(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY
-            r'(\d{4}/\d{2}/\d{2})',  # YYYY/MM/DD
-            r'(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD
-            r'(\b\w+ \d{1,2}, \d{4}\b)',  # Month Day, Year
-            r'(\d{1,2} \b\w+ \d{4}\b)',  # Day Month Year
-            r'(\b\w+ \d{1,2} \d{4}\b)'  # Month Day Year
-        ]
-        dates = []
-        for pattern in date_patterns:
-            matches = re.findall(pattern, consolidated_text)
-            for match in matches:
-                try:
-                    print(match)
-                    # Try to parse the date and convert to a standard format (YYYY-MM-DD)
-                    normalized_date = self._normalize_date(match)
-                    dates.append(normalized_date)
-                except ValueError:
-                    continue
-
-        self.class_text_mapping['Date'].extend(dates) if dates else None
+        self.class_text_mapping['Column Title'].append(consolidated_text)
 
     def _normalize_date(self, date_str):
         """
@@ -157,7 +196,7 @@ class BalanceSheetExtractor:
         Returns:
             str: The normalized date string.
         """
-        for fmt in ('%m/%d/%Y', '%m-%d/%Y', '%Y/%m/%d', '%Y-%m-%d', '%B %d, %Y', '%d %B %Y', '%B %d %Y'):
+        for fmt in ('%m/%d/%Y', '%m-%d/%Y', '%Y/%m/%d', '%Y-%m-%d', '%B %d, %Y', '%d %B %Y', '%B %d %Y', '%B %Y %d'):
             try:
                 return datetime.strptime(date_str, fmt).strftime('%Y-%m-%d')
             except ValueError:
@@ -172,20 +211,7 @@ class BalanceSheetExtractor:
             ocr_result: OCR results from EasyOCR.
         """
         unit_texts = [text for (bbox, text, prob) in ocr_result]
-        # Implement unit resolution logic here
-        resolved_unit = self._resolve_unit(unit_texts)
-        self.class_text_mapping['Unit'].append(resolved_unit)
 
-    def _resolve_unit(self, unit_texts: List[str]) -> Dict[str, int]:
-        """
-        Resolves what the unit is, commonly millions or thousands.
-
-        Args:
-            unit_texts (List[str]): List of texts extracted from the 'Unit' class.
-
-        Returns:
-            Dict[str, int]: Dictionary of unit conversions.
-        """
         units = {'financial_unit': 1, 'share_unit': 1}
         for text in unit_texts:
             if 'million' in text.lower():
@@ -194,16 +220,15 @@ class BalanceSheetExtractor:
                 units['financial_unit'] = 1000
             if 'share' in text.lower() and 'thousand' in text.lower():
                 units['share_unit'] = 1000
-        return units
 
-    def _handle_balance_sheet_class(self, ocr_result, class_name):
+        self.class_text_mapping['Unit'].append(units)
+
+    def handle_data(self, ocr_result):
         """
-        Handles balance sheet classes ('Current Assets', 'Non Current Assets', 'Current Liabilities',
-        'Non Current Liabilities', 'Equity') by parsing the OCR results into key-value pairs.
+        Handles data by parsing the OCR results into key-value pairs.
 
         Args:
             ocr_result: OCR results from EasyOCR.
-            class_name (str): The class name to handle.
         """
         # Collect all text into a list
         all_texts = []
@@ -215,88 +240,75 @@ class BalanceSheetExtractor:
         # Parse the list to create key-value pairs
         parsed_data = {}
         current_key = None
-        numeric_pattern = re.compile(r'^-?\d+(,\d{3})*(\.\d+)?$')
-        negative_pattern = re.compile(r'^\((\d+(,\d{3})*(\.\d+)?)\)$')
 
-        i = 0
-        while i < len(all_texts):
-            text = all_texts[i]
-            if numeric_pattern.match(text.replace(',', '')):
-                # This is a numeric value
+        for text in all_texts:
+            if text.isdigit():  # If the text is a number
                 if current_key:
                     if current_key not in parsed_data:
                         parsed_data[current_key] = []
                     parsed_data[current_key].append(text)
-                    # Check if the next item is also a numeric value
-                    if i + 1 < len(all_texts) and numeric_pattern.match(all_texts[i + 1].replace(',', '')):
-                        parsed_data[current_key].append(all_texts[i + 1])
-                        i += 1  # Move to the next item after the second numeric value
-                    current_key = None
-            elif negative_pattern.match(text.replace(',', '')):
-                # This is a negative numeric value
-                negative_value = '-' + negative_pattern.match(text.replace(',', '')).group(1)
-                if current_key:
-                    if current_key not in parsed_data:
-                        parsed_data[current_key] = []
-                    parsed_data[current_key].append(negative_value)
-                    # Check if the next item is also a numeric value
-                    if i + 1 < len(all_texts) and numeric_pattern.match(all_texts[i + 1].replace(',', '')):
-                        parsed_data[current_key].append(all_texts[i + 1])
-                        i += 1  # Move to the next item after the second numeric value
-                    current_key = None
-            else:
-                # This is a key (column title)
-                if current_key:
-                    # Append to the existing key
-                    current_key += ' ' + text
-                else:
-                    current_key = text
+            else:  # The text is a key
+                current_key = text
 
-                # Check if the next item is a continuation of the current key
-                if i + 1 < len(all_texts) and not (
-                        numeric_pattern.match(all_texts[i + 1].replace(',', '')) or negative_pattern.match(
-                    all_texts[i + 1].replace(',', ''))):
-                    current_key += ' ' + all_texts[i + 1]
-                    i += 1  # Move to the next item after the continuation
+        self.class_text_mapping['Data'].append(parsed_data) if parsed_data else None
 
-            i += 1
+    def create_dataframe(self):
+        data_entries = self.class_text_mapping['Data']
+        column_titles = self.class_text_mapping['Column Title']
 
-        self.class_text_mapping[class_name].append(parsed_data)
+        # Ensure there are data entries and column titles
+        if not data_entries or not column_titles:
+            raise ValueError("Data entries or Column Titles are missing")
 
-    def create_balance_sheet_dataframe(self):
-        frames = ['Current Assets', 'Non Current Assets', 'Current Liabilities', 'Non Current Liabilities', 'Equity']
-        dfs = []
+        # Determine the length of each data entry
+        lengths = [len(next(iter(entry.values()))) for entry in data_entries]
 
-        for frame in frames:
-            try:
-                dfs.append(pd.DataFrame(self.class_text_mapping[frame][0], index=self.class_text_mapping['Date']).T)
-                print(f"Found {frame} inside the document. Adding it to list of frames.")
-            except KeyError as e:
-                print(f"Could not find {frame}, it was likely not detected within the table and therefore cannot"
-                      f"be extracted. Skipping.")
+        # Calculate the median length
+        median_length = int(median(lengths))
 
-        balance_sheet = pd.concat(dfs)
+        # Filter out entries that do not match the median length
+        filtered_entries = [entry for entry in data_entries if len(entry.values()) == median_length]
 
-        return balance_sheet
+        # Ensure the length of the column titles matches the expected number of columns
+        expected_num_columns = len(next(iter(data_entries[0].values())))
+        if len(column_titles) != expected_num_columns:
+            raise ValueError(
+                f"Length mismatch: Expected {expected_num_columns} column titles, got {len(column_titles)}")
+
+        # Prepare a list to collect DataFrames
+        dataframes = []
+
+        # Process each data entry to construct a DataFrame
+        for entry in filtered_entries:
+            df = pd.DataFrame(entry)
+            dataframes.append(df)
+
+        # Concatenate all DataFrames
+        concatenated_df = pd.concat(dataframes, axis=1).T.drop_duplicates()
+
+        # Assign column titles
+        concatenated_df.columns = column_titles
+
+        return concatenated_df
 
     def run(self):
         results = self.perform_inference(output_path=r'C:\Users\Elijah\PycharmProjects\edgar_backend\image')
         self.extract_text_from_bounding_boxes(results)
-        results = self.create_balance_sheet_dataframe()
+        results = self.create_dataframe()
         return results
 
 
 if __name__ == "__main__":
-    import argparse
+    # import argparse
+    #
+    # parser = argparse.ArgumentParser(description="YOLOv8 Data Table Extraction")
+    # parser.add_argument("--model_path", type=str, required=True, help="Path to the YOLOv8 model file.")
+    # parser.add_argument("--image_path", type=str, required=True, help="Path to the image file")
+    # args = parser.parse_args()
+    # extractor = Extract(model_path=args.model_path, image_path=args.image_path)
+    # frame = extractor.run()
 
-    parser = argparse.ArgumentParser(description="YOLOv8 Data Table Extraction")
-    parser.add_argument("--model_path", type=str, required=True, help="Path to the YOLOv8 model file.")
-    parser.add_argument("--image_path", type=str, required=True, help="Path to the image file")
-    args = parser.parse_args()
-    extractor = BalanceSheetExtractor(model_path=args.model_path, image_path=args.image_path)
-    frame = extractor.run()
-
-    # model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train15\weights\best.pt"
-    # image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\AAPL\0000320193-18-000070_table_page5_table1.png"
-    # self = BalanceSheetExtractor(model_path=model_path, image_path=image_path)
-    # frame = self.run()
+    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train19\weights\best.pt"
+    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset\images\train\0000320193-18-000007_table_page6_table1.png"
+    self = Extract(model_path=model_path, image_path=image_path)
+    frame = self.run()
