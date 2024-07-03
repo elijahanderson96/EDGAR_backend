@@ -145,10 +145,10 @@ class FeatureExtractor:
 
                 try:
                     close_price_12_weeks = \
-                    self.stock_data_df.loc[self.stock_data_df.index >= end_date_12_weeks].iloc[0]['close']
+                        self.stock_data_df.loc[self.stock_data_df.index >= end_date_12_weeks].iloc[0]['close']
                 except IndexError:
                     close_price_12_weeks = \
-                    self.stock_data_df.loc[self.stock_data_df.index <= end_date_12_weeks].iloc[-1]['close']
+                        self.stock_data_df.loc[self.stock_data_df.index <= end_date_12_weeks].iloc[-1]['close']
                 self.logger.info(f"Close price 12 weeks later: {close_price_12_weeks}")
 
                 label_2_weeks = 1 if close_price_2_weeks > close_price_filed_date else 0

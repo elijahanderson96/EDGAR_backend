@@ -14,10 +14,11 @@ logging.basicConfig(level=logging.INFO)
 
 config = pdfkit.configuration(wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
 
+
 def convert_html_to_pdf(html_file, pdf_file, css_file=None, output_html_file=None):
     logging.info(f"Converting HTML file '{html_file}' to PDF")
-    css_file = r'C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\table_styler.css'
-    output_html_file=rf'C:\Users\Elijah\PycharmProjects\edgar_backend\{uuid.uuid4().hex}.html'
+    css_file = r'/sec-edgar-filings/table_styler.css'
+    output_html_file = rf'C:\Users\Elijah\PycharmProjects\edgar_backend\{uuid.uuid4().hex}.html'
 
     # Read the HTML file
     with open(html_file, 'r', encoding='utf-8') as f:
@@ -59,10 +60,12 @@ def convert_html_to_pdf(html_file, pdf_file, css_file=None, output_html_file=Non
     pdfkit.from_string(styled_html, pdf_file, options=options, configuration=config)
     logging.info(f"PDF file '{pdf_file}' created successfully")
 
+
 def preprocess_pdf(pdf_file):
     logging.info(f"Preprocessing PDF file '{pdf_file}'")
     # Perform any necessary preprocessing on the PDF file
     pass
+
 
 def detect_tables(image, model, feature_extractor, padding=250):
     logging.info("Detecting tables in the image")
@@ -95,6 +98,7 @@ def detect_tables(image, model, feature_extractor, padding=250):
     logging.info(f"The scores of these tables are {scores}")
 
     return padded_boxes
+
 
 def process_document(html_file, output_dir):
     logging.info(f"Processing document: {html_file}")
@@ -144,6 +148,7 @@ def process_document(html_file, output_dir):
     logging.info(f"Removing temporary PDF file '{pdf_file}'")
     os.remove(pdf_file)
 
+
 def main(symbol):
     logging.info("Starting table extraction process")
 
@@ -163,6 +168,7 @@ def main(symbol):
                     logging.error(str(e))
 
     logging.info("Table extraction process completed")
+
 
 # Run the script for a specific symbol (e.g., AAPL)
 if __name__ == "__main__":
