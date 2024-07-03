@@ -1,7 +1,0 @@
-
-train: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset_balance_sheets/images/train
-val: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset_balance_sheets/images/val
-test: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset_balance_sheets/images/test
-
-nc: 8
-names: ["Current Assets", "Non Current Assets", "Current Liabilities", "Non Current Liabilities", "Equity", "Date", "Period", "Unit"]
