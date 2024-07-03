@@ -134,6 +134,9 @@ class Extract:
                 if class_name == 'Data':
                     x_min = int(x_min * .9)
                     x_max = int(x_max * 1.1)
+                elif class_name == 'Unit':
+                    x_min = int(x_min * .5)
+                    x_max = int(x_max * 2)
 
                 cropped_img = image[y_min:y_max, x_min:x_max]
                 ocr_result = self.reader.readtext(cropped_img)
@@ -259,7 +262,7 @@ if __name__ == "__main__":
     # extractor = Extract(model_path=args.model_path, image_path=args.image_path)
     # frame = extractor.run()
 
-    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train19\weights\best.pt"
-    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset\images\train\0000320193-18-000007_table_page6_table1.png"
+    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train24\weights\best.pt"
+    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\AAPL\0000320193-21-000010_table_page6_table1.png"
     self = Extract(model_path=model_path, image_path=image_path)
     frame = self.run()
