@@ -10,7 +10,7 @@ import torch
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
-config = pdfkit.configuration(wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
+config = pdfkit.configuration(wkhtmltopdf=r'/usr/local/bin/wkhtmltopdf')#C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
 
 
 def convert_html_to_pdf(html_file, pdf_file, css_file=None, output_html_file=None):
@@ -170,5 +170,5 @@ def main(symbol):
 
 # Run the script for a specific symbol (e.g., AAPL)
 if __name__ == "__main__":
-    symbol = "LIN"  # Change this to the desired stock symbol
+    symbol = "AMD"  # Change this to the desired stock symbol
     main(symbol)
