@@ -59,6 +59,8 @@ def convert_html_to_pdf(html_file, pdf_file, css_file=None, output_html_file=Non
     # Convert the HTML to a PDF file
     pdfkit.from_string(styled_html, pdf_file, options=options, configuration=config)
     logging.info(f"PDF file '{pdf_file}' created successfully")
+    return output_html_file
+
 
 
 def preprocess_pdf(pdf_file):
@@ -78,7 +80,7 @@ def detect_tables(image, model, feature_extractor, padding=250):
 
     # Process the model outputs to get the bounding boxes of the detected tables
     width, height = image.size
-    results = feature_extractor.post_process_object_detection(outputs, threshold=0.9, target_sizes=[(height, width)])[0]
+    results = feature_extractor.post_process_object_detection(outputs, threshold=0.6, target_sizes=[(height, width)])[0]
 
     # Convert the tensor values to plain Python values
     boxes = [box.tolist() for box in results['boxes']]
@@ -114,7 +116,7 @@ def process_document(html_file, output_dir):
 
     # Generate a unique name for the PDF file
     pdf_file = f"temp_{uuid.uuid4().hex}.pdf"
-    convert_html_to_pdf(html_file, pdf_file)
+    output_html_file = convert_html_to_pdf(html_file, pdf_file)
 
     # Convert PDF to images
     logging.info(f"Converting PDF file '{pdf_file}' to images")
@@ -149,8 +151,9 @@ def process_document(html_file, output_dir):
     # Clean up temporary files
     logging.info(f"Removing temporary PDF file '{pdf_file}'")
     os.remove(pdf_file)
-    logging.info(f"removing temporary html_file: {html_file}")
-    os.remove(html_file)
+
+    logging.info(f"Removing temporary HTML file '{output_html_file}'")
+    os.remove(output_html_file)
 
 
 def main(symbol, pipeline=True):
