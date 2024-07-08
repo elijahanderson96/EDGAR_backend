@@ -1,4 +1,6 @@
+import argparse
 import os
+import sys
 import uuid
 from pdf2image import convert_from_path
 from transformers import TableTransformerForObjectDetection, DetrFeatureExtractor
@@ -6,11 +8,11 @@ import pdfkit
 import logging
 import torch
 
-
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
 
-config = pdfkit.configuration(wkhtmltopdf=r'/usr/local/bin/wkhtmltopdf')#C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
+config = pdfkit.configuration(
+    wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe') # r'/usr/local/bin/wkhtmltopdf')
 
 
 def convert_html_to_pdf(html_file, pdf_file, css_file=None, output_html_file=None):
@@ -103,10 +105,12 @@ def process_document(html_file, output_dir):
 
     # Extract the stock symbol from the path
     parts = html_file.split(os.sep)
-    symbol = parts[1]  # Assuming the second part is the symbol
+    #symbol = parts[1]  # Assuming the second part is the symbol
+    symbol = parts[2]
 
     # Extract the report name from the path
-    report_name = parts[3]  # Assuming the fourth part is the report name
+    #report_name = parts[3]  # Assuming the fourth part is the report name
+    report_name = parts[4]
 
     # Generate a unique name for the PDF file
     pdf_file = f"temp_{uuid.uuid4().hex}.pdf"
@@ -145,14 +149,17 @@ def process_document(html_file, output_dir):
     # Clean up temporary files
     logging.info(f"Removing temporary PDF file '{pdf_file}'")
     os.remove(pdf_file)
+    logging.info(f"removing temporary html_file: {html_file}")
+    os.remove(html_file)
 
 
-def main(symbol):
+def main(symbol, pipeline=True):
     logging.info("Starting table extraction process")
-
     # Directory containing the SEC Edgar filings
-    filings_dir = os.path.join("sec-edgar-filings", symbol)
-    output_dir = "tables"
+    filings_dir = os.path.join("sec-edgar-filings", symbol) if not pipeline else os.path.join(
+        "latest_quarterly_reports", 'sec-edgar-filings', symbol)
+
+    output_dir = "tables" if not pipeline else "latest_quarterly_report_tables"
 
     # Traverse the symbol directory and find primary documents
     for root, dirs, files in os.walk(filings_dir):
@@ -168,7 +175,10 @@ def main(symbol):
     logging.info("Table extraction process completed")
 
 
-# Run the script for a specific symbol (e.g., AAPL)
 if __name__ == "__main__":
-    symbol = "AMD"  # Change this to the desired stock symbol
-    main(symbol)
+    parser = argparse.ArgumentParser(description='Process SEC Edgar filings for a specific stock symbol')
+    parser.add_argument('symbol', type=str, help='Stock symbol to process')
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    main(args.symbol)

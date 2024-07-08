@@ -7,7 +7,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Paths
-data_yaml = '/Users/elijahanderson/PycharmProjects/EDGAR_backend/yolo_classifier/data.yaml'
+data_yaml = r'C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier/data.yaml'
 
 # Loading pre-trained YOLOv8 model
 logging.info("Loading pre-trained YOLOv8 model...")
@@ -15,8 +15,9 @@ model = YOLO("yolov8n-cls.pt")  # Load a pretrained classification model
 
 # Starting training
 logging.info("Starting training...")
-model.train(data='/Users/elijahanderson/PycharmProjects/EDGAR_backend/yolo_classifier', epochs=75)
+model.train(data=r'C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier', epochs=75)
 logging.info("Training complete.")
+
 
 # Perform inference on a new image
 def perform_inference(image_path, model, output_path):
@@ -29,9 +30,10 @@ def perform_inference(image_path, model, output_path):
         cv2.imwrite(result_output_path, result_img)
         logging.info(f"Result saved to {result_output_path}")
 
+
 # Example usage for inference
-perform_inference(
-    '/Users/elijahanderson/PycharmProjects/EDGAR_backend/tables/AMD/0000002488-15-000067_table_page5_table1.png',
-    model,
-    '/Users/elijahanderson/PycharmProjects/EDGAR_backend/test.png'
-)
+# perform_inference(
+#     r'C:\Users\Elijah\PycharmProjects\edgar_backend\tables\CSCO\0000858877-13-000013_table_page3_table1.png',
+#     model,
+#     r'C:\Users\Elijah\PycharmProjects\edgar_backend/test.png'
+# )
