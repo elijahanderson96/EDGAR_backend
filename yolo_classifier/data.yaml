@@ -1,7 +1,3 @@
-
-train: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier/train
-val: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier/val
-test: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier/test
-
-nc: 4
-names: ["balance_sheet", "cash_flow", "nothing", "statement_of_operations"]
+train: /Users/elijahanderson/PycharmProjects/EDGAR_backend/yolo_classifier/train
+val: /Users/elijahanderson/PycharmProjects/EDGAR_backend/yolo_classifier/val
+test: /Users/elijahanderson/PycharmProjects/EDGAR_backend/yolo_classifier/test
