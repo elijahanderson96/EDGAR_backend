@@ -21,7 +21,7 @@ class Extract:
 
     """
 
-    def __init__(self, symbol, model_path): #model_path: str, image_path: str):
+    def __init__(self, symbol, model_path):  # model_path: str, image_path: str):
         """
         Initializes the DataTableExtractor with the given model and image paths.
 
@@ -49,6 +49,10 @@ class Extract:
         # Our images are labeled simply. These are the labels we use to extract all relevant information from a table.
         self.class_names = ["Unit", "Data", "Column Title", "Column Group Title"]
         self.class_text_mapping = {class_name: [] for class_name in self.class_names}
+
+        self.cash_flow = None
+        self.balance_sheet = None
+        self.income_statement = None
 
         self.model = YOLO(model_path)
         logging.info(f"Model loaded from {model_path}.")
@@ -120,19 +124,19 @@ class Extract:
 
         return image_paths
 
-    def perform_inference(self, conf_threshold: float = 0.35, output_path: str = None):
+    def perform_inference(self, image_path, conf_threshold: float = 0.75, output_path: str = None):
         """
         Performs inference on the image to detect bounding boxes.
 
         Args:
+            image_path (str): Path to the image file.
             conf_threshold (float): Confidence threshold for detections.
             output_path (str): File path to output a labeled file. Pass this if you wish to see
             the bounding boxes the model outputs during inference.
         """
         try:
-            img = cv2.imread(self.image_path)
+            img = cv2.imread(image_path)
             results = self.model(img, conf=conf_threshold)
-            output_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\test_output.png"
 
             # Define colors for each class
             colors = {
@@ -166,25 +170,33 @@ class Extract:
             img_with_legend = np.vstack((img_with_boxes, legend))
 
             # Save the resulting image
-            result_output_path = output_path or r"C:\Users\Elijah\PycharmProjects\edgar_backend\test_output.png"
+            parent_dir, original_filename = os.path.split(image_path)
+            filename, ext = os.path.splitext(original_filename)
+            annotated_filename = f"{filename}_annotated_image{ext}"
+            result_output_path = os.path.join(parent_dir, annotated_filename)
+
             cv2.imwrite(result_output_path, img_with_legend)
 
             logging.info(f"Inference results: {results}")
+            logging.info(f"Annotated image saved to: {result_output_path}")
             return results
         except Exception as e:
             logging.error(f"Error during inference: {e}")
             raise
 
-    def extract_text_from_bounding_boxes(self, results, conf_threshold: float = 0.25) -> None:
+    def extract_text_from_bounding_boxes(self, results, image_path, conf_threshold: float = 0.25) -> dict:
         """
         Extracts text from bounding boxes and stores them in class_text_mapping.
 
         Args:
             results: Inference results containing bounding boxes.
+            image_path (str): Path to the image file.
             conf_threshold (float): Confidence threshold for detections.
         """
         try:
-            image = cv2.imread(self.image_path)
+            self.class_text_mapping = {class_name: [] for class_name in self.class_names}
+            print(image_path)
+            image = cv2.imread(image_path)
             boxes_with_classes = []
 
             for result in results:
@@ -235,6 +247,8 @@ class Extract:
                     self.class_text_mapping[class_name].extend([text for (bbox, text, prob) in ocr_result])
 
             logging.info(f"Extracted text from bounding boxes: {self.class_text_mapping}")
+            return self.class_text_mapping
+
         except Exception as e:
             logging.error(f"Error during text extraction: {e}")
             raise
@@ -301,12 +315,13 @@ class Extract:
 
         self.class_text_mapping['Data'].append(parsed_data) if parsed_data else None
 
-    def create_dataframe(self):
-        data_entries = self.class_text_mapping['Data']
-        column_titles = self.class_text_mapping['Column Title']
+    @staticmethod
+    def create_dataframe(class_text_mapping):
+        data_entries = class_text_mapping['Data']
+        column_titles = class_text_mapping['Column Title']
 
-        if not data_entries or not column_titles:
-            raise ValueError("Data entries or Column Titles are missing")
+        # if not data_entries or not column_titles:
+        #     raise ValueError("Data entries or Column Titles are missing")
 
         lengths = [len(value) for entry in data_entries for value in entry.values()]
 
@@ -320,17 +335,36 @@ class Extract:
 
         expected_num_columns = len(next(iter(data_entries[0].values())))
 
-        if len(column_titles) != expected_num_columns:
-            raise ValueError(
-                f"Length mismatch: Expected {expected_num_columns} column titles, got {len(column_titles)}")
+        # if len(column_titles) != expected_num_columns:
+        #     raise ValueError(
+        #         f"Length mismatch: Expected {expected_num_columns} column titles, got {len(column_titles)}")
 
-        return pd.DataFrame(filtered_entries, index=self.class_text_mapping['Column Title']).T
+        print(filtered_entries)
+        return pd.DataFrame(filtered_entries,
+                            index=column_titles if column_titles else [str(i) for i in range(median_length)]).T
 
     def run(self):
-        results = self.perform_inference(output_path=r'C:\Users\Elijah\PycharmProjects\edgar_backend\image')
-        self.extract_text_from_bounding_boxes(results)
-        results = self.create_dataframe()
-        return results
+        results = {}
+
+        for category, image_list in self.image_paths.items():
+            category_text_mappings = []
+            for image_path in image_list:
+                inference_results = self.perform_inference(image_path)
+                text_mapping = self.extract_text_from_bounding_boxes(inference_results, image_path)
+                category_text_mappings.append(text_mapping)
+
+            combined_text_mapping = {class_name: [] for class_name in self.class_names}
+            for mapping in category_text_mappings:
+                for class_name in self.class_names:
+                    combined_text_mapping[class_name].extend(mapping[class_name])
+
+            results[category] = self.create_dataframe(combined_text_mapping)
+
+        self.cash_flow = results['cash_flow']
+        self.balance_sheet = results['balance_sheet']
+        self.income_statement = results['income']
+
+        return self.cash_flow, self.balance_sheet, self.income_statement
 
 
 if __name__ == "__main__":
@@ -344,6 +378,5 @@ if __name__ == "__main__":
     # frame = extractor.run()
 
     model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train24\weights\best.pt"
-    image_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\tables\AAPL\0000320193-21-000010_table_page6_table1.png"
-    self = Extract(model_path=model_path, image_path=image_path)
-    frame = self.run()
+    self = Extract(symbol='ACCD', model_path=model_path)
+    cash_flow, balance_sheet, income_statement = self.run()
