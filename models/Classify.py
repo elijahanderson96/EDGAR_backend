@@ -1,5 +1,6 @@
 import logging
 import argparse
+import re
 import time
 
 from ultralytics import YOLO
@@ -63,40 +64,25 @@ def classify_and_move(files):
 def main(symbol_dirs):
     all_files = []
     for symbol_dir in symbol_dirs:
-        symbol_path = os.path.join(ROOT_DIR, "latest_quarterly_reports", 'sec-edgar-filings', symbol_dir, 'tables')
+        symbol_path = os.path.join(ROOT_DIR, "latest_quarterly_reports", 'sec-edgar-filings', symbol_dir, '10-Q')
         print(f"Searching directory: {symbol_path}")
-        for root, _, files in os.walk(symbol_path):
+        for root, dirs, files in os.walk(symbol_path):
+            # Ensure we don't create tables directory infinitely
             for file in files:
+                if not file.endswith(".png"):
+                    continue
+                print(file)
                 file_path = os.path.join(root, file)
                 all_files.append(file_path)
     print(f"All files to process: {all_files}")
     classify_and_move(all_files)
 
 
-def run_tests():
-    # Define test cases
-    test_images = [
-        (r"C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_report_tables\CMC\0000022444-24-000089_table_page6_table1.png", "balance_sheet"),
-        (r"C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_report_tables\ADBE\0000796343-24-000150_table_page8_table1.png", "cash_flow"),
-    ]
-
-    # Run inference on test cases
-    for image_path, expected_class in test_images:
-        result_class = perform_inference(image_path, model)
-        assert result_class == expected_class, f"Test failed for {image_path}: expected {expected_class}, got {result_class}"
-        print(f"Test passed for {image_path}: expected {expected_class}, got {result_class}")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Classify and move files')
     parser.add_argument('symbol_dirs', metavar='D', type=str, nargs='*', help='a list of symbol directories to process')
-    parser.add_argument('--test', action='store_true', help='Run test cases')
     args = parser.parse_args()
 
-    if args.test:
-        run_tests()
-    else:
-        if not args.symbol_dirs:
-            parser.error("the following arguments are required: D")
-        print(f"Directories to process: {args.symbol_dirs}")
-        main(args.symbol_dirs)
+    print(f"Directories to process: {args.symbol_dirs}")
+    main(args.symbol_dirs)

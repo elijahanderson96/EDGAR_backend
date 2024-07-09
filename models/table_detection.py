@@ -102,16 +102,13 @@ def detect_tables(image, model, feature_extractor, padding=250):
     return padded_boxes
 
 
-def process_document(html_file, output_dir):
+def process_document(html_file):
     logging.info(f"Processing document: {html_file}")
 
     # Extract the stock symbol from the path
     parts = html_file.split(os.sep)
-    #symbol = parts[1]  # Assuming the second part is the symbol
-    symbol = parts[2]
 
     # Extract the report name from the path
-    #report_name = parts[3]  # Assuming the fourth part is the report name
     report_name = parts[4]
 
     # Generate a unique name for the PDF file
@@ -126,6 +123,9 @@ def process_document(html_file, output_dir):
     logging.info("Loading TableTransformer model and feature extractor")
     model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
     feature_extractor = DetrFeatureExtractor.from_pretrained("microsoft/table-transformer-detection")
+
+    # Set the output directory to the report level
+    output_dir = os.path.join(os.path.dirname(html_file), 'tables')
 
     # Create a directory to store table screenshots for the stock symbol
     os.makedirs(output_dir, exist_ok=True)
@@ -159,7 +159,6 @@ def main(symbol):
     logging.info("Starting table extraction process")
 
     filings_dir = os.path.join("latest_quarterly_reports", 'sec-edgar-filings', symbol)
-    output_dir = os.path.join(filings_dir, 'tables')
 
     # Traverse the symbol directory and find primary documents
     for root, dirs, files in os.walk(filings_dir):
@@ -167,10 +166,11 @@ def main(symbol):
             if file == "primary-document.html":
                 html_file = os.path.join(root, file)
                 try:
-                    process_document(html_file, output_dir)
+                    process_document(html_file)
                 except Exception as e:
                     logging.error(f"Error processing document: {html_file}")
                     logging.error(str(e))
+                    raise e
 
     logging.info("Table extraction process completed")
 

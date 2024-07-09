@@ -21,7 +21,7 @@ class Extract:
 
     """
 
-    def __init__(self, symbol, model_path):  # model_path: str, image_path: str):
+    def __init__(self, symbol, filings_dir, model_path):  # model_path: str, image_path: str):
         """
         Initializes the DataTableExtractor with the given model and image paths.
 
@@ -32,14 +32,14 @@ class Extract:
         """
         self.symbol = symbol
         self.model_path = model_path
-        self.filings_dir = os.path.join(ROOT_DIR, "latest_quarterly_reports", "sec-edgar-filings", symbol)
+        self.filings_dir = filings_dir
         self.primary_document = self.find_primary_document()
         self.full_submission = self.find_full_submission()
         self.filed_as_of_date = self._extract_filed_as_of_date()
         self.report_date = self.extract_report_date()
 
         # Set up table directory path
-        self.table_dir = os.path.join("latest_quarterly_reports", "sec-edgar-filings", symbol, "tables")
+        self.table_dir = os.path.join(self.filings_dir, "tables")
 
         if not os.path.exists(self.table_dir):
             raise FileNotFoundError(f"Table directory for symbol {symbol} not found")
@@ -282,6 +282,8 @@ class Extract:
 
         self.class_text_mapping['Unit'].append(units)
 
+    from statistics import median
+
     def handle_data(self, ocr_result):
         """
         Handles data by parsing the OCR results into key-value pairs.
@@ -301,16 +303,23 @@ class Extract:
         current_key = None
 
         for text in all_texts:
-            # Check if the text is a numerical value surrounded by parentheses
-            if text.startswith('(') and text.endswith(')') and text[1:-1].isdigit():
-                text = '-' + text[1:-1]  # Convert to negative value
-            if text.isdigit() or (text.startswith('-') and text[1:].isdigit()):  # If the text is a number
+            # Check if the text is a numerical value
+            if re.match(r'^-?\d+(\.\d+)?$', text):
                 if current_key:
                     if current_key not in parsed_data:
                         parsed_data[current_key] = []
                     parsed_data[current_key].append(text)
             else:  # The text is a key
                 current_key = text
+
+        # Calculate the median length of all arrays in parsed_data
+        lengths = [len(value) for value in parsed_data.values()]
+        if lengths:
+            median_length = int(median(lengths))
+
+            # Truncate each array to the median length
+            for key in parsed_data.keys():
+                parsed_data[key] = parsed_data[key][:median_length]
 
         self.class_text_mapping['Data'].append(parsed_data) if parsed_data else None
 
@@ -339,30 +348,40 @@ class Extract:
         #         f"Length mismatch: Expected {expected_num_columns} column titles, got {len(column_titles)}")
 
         return pd.DataFrame(filtered_entries,
-                            index=column_titles if column_titles else [str(i) for i in range(median_length)]).T
+                            index=column_titles if len(column_titles) == median_length else [str(i) for i in range(median_length)]).T
 
     def run(self):
         results = {}
 
         for category, image_list in self.image_paths.items():
-            category_text_mappings = []
+            # Initialize a combined text mapping for the category
+            combined_text_mapping = {class_name: [] for class_name in self.class_names}
+
             for image_path in image_list:
                 inference_results = self.perform_inference(image_path)
                 text_mapping = self.extract_text_from_bounding_boxes(inference_results, image_path)
-                category_text_mappings.append(text_mapping)
-
-            combined_text_mapping = {class_name: [] for class_name in self.class_names}
-            for mapping in category_text_mappings:
+                print("TEXT MAPPING")
+                print(text_mapping)
+                # Append values to the combined text mapping
                 for class_name in self.class_names:
-                    combined_text_mapping[class_name].extend(mapping[class_name])
+                    combined_text_mapping[class_name].extend(text_mapping[class_name])
+                print("COMBINARED_TEXT_MAPPING")
+                print(combined_text_mapping)
+            # Create a dataframe for the category
 
-            results[category] = self.create_dataframe(combined_text_mapping)
+            category_dataframe = self.create_dataframe(combined_text_mapping)
 
-        self.cash_flow = results['cash_flow']
-        self.balance_sheet = results['balance_sheet']
-        self.income_statement = results['income']
+            # Store the dataframe in the results dictionary
+            results[category] = category_dataframe
+
+        self.cash_flow = results.get('cash_flow')
+        self.balance_sheet = results.get('balance_sheet')
+        self.income_statement = results.get('income')
 
         return self.cash_flow, self.balance_sheet, self.income_statement
+
+    def save_data(self):
+        pass
 
 
 if __name__ == "__main__":
@@ -376,5 +395,7 @@ if __name__ == "__main__":
     # frame = extractor.run()
 
     model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train24\weights\best.pt"
-    self = Extract(symbol='ACCD', model_path=model_path)
-    cash_flow, balance_sheet, income_statement = self.run()
+    self = Extract(symbol='ACCD',
+                   filings_dir=r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\GBX\10-Q\0000950170-24-082097',
+                   model_path=model_path)
+    #cash_flow, balance_sheet, income_statement = self.run()
