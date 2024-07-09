@@ -46,7 +46,7 @@ def classify_and_move(files):
                 print(f"Classified {file_path} as {classification}")
 
                 # Move the file to the appropriate directory
-                parent_dir = os.path.dirname(os.path.dirname(file_path))
+                parent_dir = os.path.dirname(file_path)
                 destination_dir = os.path.join(parent_dir, classification)
                 print(f"Creating directory: {destination_dir}")
                 os.makedirs(destination_dir, exist_ok=True)
@@ -55,7 +55,7 @@ def classify_and_move(files):
                 shutil.move(file_path, destination_path)
 
                 print(f"Moved file {file_path} to {destination_path}")
-                time.sleep(5)
+                time.sleep(2)
             except Exception as e:
                 logging.error(f"Error processing file {file_path}: {e}")
 
@@ -63,7 +63,7 @@ def classify_and_move(files):
 def main(symbol_dirs):
     all_files = []
     for symbol_dir in symbol_dirs:
-        symbol_path = os.path.join(ROOT_DIR, "latest_quarterly_report_tables", symbol_dir)
+        symbol_path = os.path.join(ROOT_DIR, "latest_quarterly_reports", 'sec-edgar-filings', symbol_dir, 'tables')
         print(f"Searching directory: {symbol_path}")
         for root, _, files in os.walk(symbol_path):
             for file in files:

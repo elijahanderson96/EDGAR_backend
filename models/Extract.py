@@ -1,35 +1,50 @@
+import os
 from statistics import median
 
 import cv2
 import easyocr
 import numpy as np
 import pandas as pd
+from bs4 import BeautifulSoup
 from ultralytics import YOLO
 import logging
 from typing import Dict, List
+import re
+from dateutil import parser
+
+from config.filepaths import ROOT_DIR
 
 
 class Extract:
     """
     Extract class for extracting information from a data table in an image using YOLOv8 and EasyOCR.
 
-    Attributes:
-        model_path (str): Path to the YOLOv8 model.
-        image_path (str): Path to the image file.
-        class_text_mapping (Dict[str, List[List[str]]]): Mapping of class names to lists of OCR extracted text.
     """
 
-    def __init__(self, model_path: str, image_path: str):
+    def __init__(self, symbol, model_path): #model_path: str, image_path: str):
         """
         Initializes the DataTableExtractor with the given model and image paths.
 
         Args:
+            symbol (str): The name of the stock symbol.
             model_path (str): Path to the YOLOv8 model.
-            image_path (str): Path to the image file.
 
         """
+        self.symbol = symbol
         self.model_path = model_path
-        self.image_path = image_path
+        self.filings_dir = os.path.join(ROOT_DIR, "latest_quarterly_reports", "sec-edgar-filings", symbol)
+        self.primary_document = self.find_primary_document()
+        self.full_submission = self.find_full_submission()
+        self.filed_as_of_date = self._extract_filed_as_of_date()
+        self.report_date = self.extract_report_date()
+
+        # Set up table directory path
+        self.table_dir = os.path.join("latest_quarterly_reports", "sec-edgar-filings", symbol, "tables")
+
+        if not os.path.exists(self.table_dir):
+            raise FileNotFoundError(f"Table directory for symbol {symbol} not found")
+
+        self.image_paths = self.get_image_paths()
 
         # Our images are labeled simply. These are the labels we use to extract all relevant information from a table.
         self.class_names = ["Unit", "Data", "Column Title", "Column Group Title"]
@@ -38,6 +53,72 @@ class Extract:
         self.model = YOLO(model_path)
         logging.info(f"Model loaded from {model_path}.")
         self.reader = easyocr.Reader(['en'])
+
+    def find_primary_document(self):
+        for root, _, files in os.walk(self.filings_dir):
+            if "primary-document.html" in files:
+                return os.path.join(root, "primary-document.html")
+        raise FileNotFoundError("Primary document not found")
+
+    def find_full_submission(self):
+        for root, _, files in os.walk(self.filings_dir):
+            if "full-submission.txt" in files:
+                return os.path.join(root, "full-submission.txt")
+        raise FileNotFoundError("Full submission text not found")
+
+    def _extract_filed_as_of_date(self):
+        with open(self.full_submission, 'r', encoding='utf-8') as f:
+            text = f.read()
+        match = re.search(r'FILED AS OF DATE:\s*(\d{8})', text)
+        if match:
+            filed_as_of_date = match.group(1)
+            formatted_date = f"{filed_as_of_date[:4]}-{filed_as_of_date[4:6]}-{filed_as_of_date[6:]}"
+            return formatted_date
+        return None
+
+    def extract_report_date(self):
+        with open(self.primary_document, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        soup = BeautifulSoup(html_content, 'html.parser')
+
+        # Find any tags containing the quarterly period text
+        tags = soup.find_all(string=re.compile(r"(?i)For the (?:Quarterly|quarterly) period ended"))
+
+        if tags:
+            # Extract the text from the next tag
+            next_tag = tags[0].find_next()
+            if next_tag:
+                date_string = next_tag.get_text(strip=True)
+                try:
+                    report_date = parser.parse(date_string).strftime("%Y-%m-%d")
+                    return report_date
+                except ValueError:
+                    logging.error("Invalid date format.")
+            else:
+                logging.error("Date not found in the next tag.")
+        else:
+            logging.error("Quarterly period text not found in the HTML content.")
+        return None
+
+    def get_image_paths(self) -> Dict[str, List[str]]:
+        """
+        Retrieves the image paths categorized by balance_sheet, cash_flow, and income.
+
+        Returns:
+            Dict[str, List[str]]: A dictionary containing lists of image paths categorized by balance_sheet, cash_flow, and income.
+        """
+        categories = ["balance_sheet", "cash_flow", "income"]
+        image_paths = {category: [] for category in categories}
+
+        for category in categories:
+            category_dir = os.path.join(self.table_dir, category)
+            if os.path.exists(category_dir):
+                for root, _, files in os.walk(category_dir):
+                    for file in files:
+                        if file.endswith(".png"):
+                            image_paths[category].append(os.path.join(root, file))
+
+        return image_paths
 
     def perform_inference(self, conf_threshold: float = 0.35, output_path: str = None):
         """

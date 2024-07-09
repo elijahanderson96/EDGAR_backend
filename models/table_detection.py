@@ -128,8 +128,7 @@ def process_document(html_file, output_dir):
     feature_extractor = DetrFeatureExtractor.from_pretrained("microsoft/table-transformer-detection")
 
     # Create a directory to store table screenshots for the stock symbol
-    symbol_tables_dir = os.path.join(output_dir, symbol)
-    os.makedirs(symbol_tables_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
     # Process each page image
     for i, image in enumerate(images):
@@ -144,7 +143,7 @@ def process_document(html_file, output_dir):
         # Visualize table regions on the image and save the screenshots
         for j, box in enumerate(table_boxes):
             table_image = image.crop(box)
-            output_path = os.path.join(symbol_tables_dir, f"{report_name}_table_page{i + 1}_table{j + 1}.png")
+            output_path = os.path.join(output_dir, f"{report_name}_table_page{i + 1}_table{j + 1}.png")
             table_image.save(output_path)
             logging.info(f"Saved table screenshot: {output_path}")
 
@@ -156,13 +155,11 @@ def process_document(html_file, output_dir):
     os.remove(output_html_file)
 
 
-def main(symbol, pipeline=True):
+def main(symbol):
     logging.info("Starting table extraction process")
-    # Directory containing the SEC Edgar filings
-    filings_dir = os.path.join("sec-edgar-filings", symbol) if not pipeline else os.path.join(
-        "latest_quarterly_reports", 'sec-edgar-filings', symbol)
 
-    output_dir = "tables" if not pipeline else "latest_quarterly_report_tables"
+    filings_dir = os.path.join("latest_quarterly_reports", 'sec-edgar-filings', symbol)
+    output_dir = os.path.join(filings_dir, 'tables')
 
     # Traverse the symbol directory and find primary documents
     for root, dirs, files in os.walk(filings_dir):
