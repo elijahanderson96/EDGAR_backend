@@ -195,7 +195,6 @@ class Extract:
         """
         try:
             self.class_text_mapping = {class_name: [] for class_name in self.class_names}
-            print(image_path)
             image = cv2.imread(image_path)
             boxes_with_classes = []
 
@@ -339,7 +338,6 @@ class Extract:
         #     raise ValueError(
         #         f"Length mismatch: Expected {expected_num_columns} column titles, got {len(column_titles)}")
 
-        print(filtered_entries)
         return pd.DataFrame(filtered_entries,
                             index=column_titles if column_titles else [str(i) for i in range(median_length)]).T
 
