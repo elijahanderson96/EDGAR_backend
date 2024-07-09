@@ -348,7 +348,8 @@ class Extract:
         #         f"Length mismatch: Expected {expected_num_columns} column titles, got {len(column_titles)}")
 
         return pd.DataFrame(filtered_entries,
-                            index=column_titles if len(column_titles) == median_length else [str(i) for i in range(median_length)]).T
+                            index=column_titles if len(column_titles) == median_length else [str(i) for i in
+                                                                                             range(median_length)]).T
 
     def run(self):
         results = {}
@@ -360,13 +361,11 @@ class Extract:
             for image_path in image_list:
                 inference_results = self.perform_inference(image_path)
                 text_mapping = self.extract_text_from_bounding_boxes(inference_results, image_path)
-                print("TEXT MAPPING")
-                print(text_mapping)
+
                 # Append values to the combined text mapping
                 for class_name in self.class_names:
                     combined_text_mapping[class_name].extend(text_mapping[class_name])
-                print("COMBINARED_TEXT_MAPPING")
-                print(combined_text_mapping)
+
             # Create a dataframe for the category
 
             category_dataframe = self.create_dataframe(combined_text_mapping)
@@ -398,4 +397,4 @@ if __name__ == "__main__":
     self = Extract(symbol='ACCD',
                    filings_dir=r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\GBX\10-Q\0000950170-24-082097',
                    model_path=model_path)
-    #cash_flow, balance_sheet, income_statement = self.run()
+    # cash_flow, balance_sheet, income_statement = self.run()
