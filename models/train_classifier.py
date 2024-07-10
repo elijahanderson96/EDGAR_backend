@@ -6,16 +6,25 @@ import logging
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Paths
-data_yaml = r'C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier/data.yaml'
 
 # Loading pre-trained YOLOv8 model
 logging.info("Loading pre-trained YOLOv8 model...")
 model = YOLO("yolov8n-cls.pt")  # Load a pretrained classification model
 
+# Hyperparameters
+hyperparameters = {
+    'batch': 8,        # Batch size
+    'imgsz': 640,       # Image size
+    'lr0': .01,
+    'epochs': 75,       # Number of epochs
+    'momentum': 0.937,  # Momentum
+    'weight_decay': 0.0005,  # Weight decay
+    'patience': 10,     # Patience for early stopping
+}
+
 # Starting training
 logging.info("Starting training...")
-model.train(data=r'C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier', epochs=75)
+model.train(data=r'C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier', **hyperparameters)
 logging.info("Training complete.")
 
 

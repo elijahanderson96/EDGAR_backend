@@ -2,6 +2,7 @@ import subprocess
 import datetime
 import sys
 import os
+import time
 
 # Get the current working directory
 script_dir = os.getcwd()
@@ -30,22 +31,23 @@ def run_command(command):
 
 def main():
     # download_date = datetime.datetime.now().strftime('%Y-%m-%d')
-    download_date = (datetime.datetime.now() - datetime.timedelta(weeks=1)).strftime('%Y-%m-%d')
-
-    command = ['python', os.path.join(script_dir, 'edgar', 'downloader.py'), download_date]
-
-    # Uncomment the next line to run the downloader script
-    #run_command(command)
+    # download_date = (datetime.datetime.now() - datetime.timedelta(weeks=520)).strftime('%Y-%m-%d')
+    #
+    # command = ['python', os.path.join(script_dir, 'edgar', 'downloader.py'), download_date]
+    #
+    # # Uncomment the next line to run the downloader script
+    # run_command(command)
 
     # Now we detect all the tables.
     latest_report_symbols = os.listdir(os.path.join(script_dir, 'latest_quarterly_reports', 'sec-edgar-filings'))
 
-    for symbol in latest_report_symbols:
+    for symbol in latest_report_symbols[5:10]:
         command = ['python', os.path.join(script_dir, 'models', 'table_detection.py'), symbol]
+        time.sleep(5)
         run_command(command)
 
-    # now we classify the tables as balance sheet, cash flow, income, or nothing.
-    command = ['python', os.path.join(script_dir, 'models', 'Classify.py')] + latest_report_symbols #'--test'
+    # # now we classify the tables as balance sheet, cash flow, income, or nothing.
+    command = ['python', os.path.join(script_dir, 'models', 'Classify.py')] + latest_report_symbols[5:10] #'--test'
     run_command(command)
 
 if __name__ == "__main__":

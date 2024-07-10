@@ -12,10 +12,13 @@ import torch
 logging.getLogger().setLevel(logging.INFO)
 
 config = pdfkit.configuration(
-    wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe') # r'/usr/local/bin/wkhtmltopdf')
+    wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')  # r'/usr/local/bin/wkhtmltopdf')
+
+model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
+feature_extractor = DetrFeatureExtractor.from_pretrained("microsoft/table-transformer-detection")
 
 
-def convert_html_to_pdf(html_file, pdf_file, css_file=None, output_html_file=None):
+def convert_html_to_pdf(html_file, pdf_file, css_file=None):
     logging.info(f"Converting HTML file '{html_file}' to PDF")
     # css_file = r'/sec-edgar-filings/table_styler.css'
     output_html_file = rf'C:\Users\Elijah\PycharmProjects\edgar_backend\{uuid.uuid4().hex}.html'
@@ -60,7 +63,6 @@ def convert_html_to_pdf(html_file, pdf_file, css_file=None, output_html_file=Non
     pdfkit.from_string(styled_html, pdf_file, options=options, configuration=config)
     logging.info(f"PDF file '{pdf_file}' created successfully")
     return output_html_file
-
 
 
 def preprocess_pdf(pdf_file):
@@ -121,11 +123,12 @@ def process_document(html_file):
     logging.info(f"Converted PDF to {len(images)} images")
 
     logging.info("Loading TableTransformer model and feature extractor")
-    model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
-    feature_extractor = DetrFeatureExtractor.from_pretrained("microsoft/table-transformer-detection")
 
     # Set the output directory to the report level
     output_dir = os.path.join(os.path.dirname(html_file), 'tables')
+
+    if os.path.exists(output_dir):
+        return
 
     # Create a directory to store table screenshots for the stock symbol
     os.makedirs(output_dir, exist_ok=True)
