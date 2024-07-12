@@ -1,3 +1,4 @@
+import json
 import os
 from statistics import median
 
@@ -13,6 +14,7 @@ import re
 from dateutil import parser
 
 from config.filepaths import ROOT_DIR
+from database.database import db_connector
 
 
 class Extract:
@@ -341,7 +343,7 @@ class Extract:
         filtered_entries = {key: value for entry in data_entries for key, value in entry.items() if
                             len(value) == median_length}
 
-        expected_num_columns = len(next(iter(data_entries[0].values())))
+        # expected_num_columns = len(next(iter(data_entries[0].values())))
 
         # if len(column_titles) != expected_num_columns:
         #     raise ValueError(
@@ -379,8 +381,62 @@ class Extract:
 
         return self.cash_flow, self.balance_sheet, self.income_statement
 
+    @staticmethod
+    def get_symbol_id(symbol):
+        query = 'SELECT symbol_id FROM metadata.symbols WHERE symbol = %s'
+        result = db_connector.run_query(query, (symbol,), fetch_one=True)
+        if result:
+            return result
+        else:
+            raise ValueError(f"Symbol {symbol} not found in metadata.symbols table.")
+
+    @staticmethod
+    def get_date_id(date):
+        query = 'SELECT date_id FROM metadata.dates WHERE date = %s'
+        result = db_connector.run_query(query, (date,), fetch_one=True)
+        if result:
+            return result
+        else:
+            raise ValueError(f"Date {date} not found in metadata.dates table.")
+
     def save_data(self):
-        pass
+        """
+        Save the dataframes for cash_flow, balance_sheet, and income_statement to the database
+        with the appropriate date and symbol fields.
+        """
+        symbol_id = self.get_symbol_id(self.symbol)
+        report_date_id = self.get_date_id(self.report_date)
+        filing_date_id = self.get_date_id(self.filed_as_of_date)
+
+        tables = {
+            'cash_flow': self.cash_flow,
+            'balance_sheet': self.balance_sheet,
+            'income': self.income_statement
+        }
+
+        for table_name, dataframe in tables.items():
+            if dataframe is not None and not dataframe.empty:
+                # Collapse dataframe to JSON-like dictionary
+                data_json = dataframe.to_dict(orient='records')
+
+                # Prepare the record for insertion
+                record = {
+                    'symbol_id': symbol_id,
+                    'report_date_id': report_date_id,
+                    'filing_date_id': filing_date_id,
+                    'data': json.dumps(data_json)  # Convert the data to a JSON string
+                }
+
+                # Insert the record into the appropriate financial table
+                insert_query = f'''
+                    INSERT INTO financials.{table_name} (symbol_id, report_date_id, filing_date_id, data)
+                    VALUES (%s, %s, %s, %s)
+                '''
+                db_connector.run_query(insert_query, (
+                    record['symbol_id'], record['report_date_id'], record['filing_date_id'], record['data']),
+                                       return_df=False)
+
+        logging.info("Data saved to the database.")
 
 
 if __name__ == "__main__":
@@ -393,10 +449,12 @@ if __name__ == "__main__":
     # extractor = Extract(model_path=args.model_path, image_path=args.image_path)
     # frame = extractor.run()
 
-    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train27\weights\best.pt"
+    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train34\weights\best.pt"
+    filings_dir = r"C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\ADI\10-Q\0000006281-14-000027"
 
-    self = Extract(symbol='ACCD',
-                   filings_dir=r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\AMAT\10-Q\0000006951-17-000026',
+    self = Extract(symbol='ADI',
+                   filings_dir=filings_dir,
                    model_path=model_path)
 
     cash_flow, balance_sheet, income_statement = self.run()
+    self.save_data()

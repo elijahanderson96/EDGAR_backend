@@ -31,7 +31,7 @@ def resolve_cik_to_symbol_mapping():
         df.reset_index(inplace=True)
         df.columns = ['cik', 'symbol', 'title']
 
-        db_connector.insert_dataframe(df, name='cik_mapping', schema='company_facts', if_exists='replace')
+        #db_connector.insert_dataframe(df, name='cik_mapping', schema='company_facts', if_exists='replace')
 
         return df
 
