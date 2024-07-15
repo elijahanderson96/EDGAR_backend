@@ -3,11 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # from api.routes.architecture import architecture_router
 from api.routes.auth import auth_router
+from api.routes.benchmark import benchmark_router
 from api.routes.company_facts import company_facts_router
+from api.routes.financials import financials_router
 # from api.routes.features import features_router
 # from api.routes.forecasts import forecasts_router
 # from api.routes.homepage import homepage_route
 # from api.routes.backtest_results import backtest_results_router
+from database.async_database import db_connector
 
 app = FastAPI()
 
@@ -19,6 +22,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.on_event("startup")
+async def startup():
+    await db_connector.initialize()
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    await db_connector.close()
+
+
 # app.include_router(homepage_route)
 # app.include_router(forecasts_router, prefix="/forecasts")
 # app.include_router(architecture_router, prefix="/model_metadata")
@@ -26,3 +40,5 @@ app.add_middleware(
 # app.include_router(backtest_results_router)
 app.include_router(auth_router)
 app.include_router(company_facts_router)
+app.include_router(benchmark_router)
+app.include_router(financials_router)
