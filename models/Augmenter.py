@@ -10,12 +10,14 @@ transform = A.Compose([
     A.RGBShift(r_shift_limit=30, g_shift_limit=30, b_shift_limit=30, p=1),
 ], bbox_params=A.BboxParams(format='coco', label_fields=['category_ids']))
 
+
 # Helper function to load JSON annotations
 
 
 def load_json(json_file):
     with open(json_file) as f:
         return json.load(f)
+
 
 # Helper function to visualize bounding boxes
 def visualize_bboxes(image, bboxes, category_ids, category_names, output_path):
@@ -24,6 +26,7 @@ def visualize_bboxes(image, bboxes, category_ids, category_names, output_path):
         cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
         cv2.putText(image, category_names[category_id], (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
     cv2.imwrite(output_path, image)
+
 
 # Load the dataset and apply augmentation
 def augment_dataset(base_dir):
@@ -77,7 +80,8 @@ def augment_dataset(base_dir):
 
             # Save augmented image with bounding boxes in the parent directory for QA
             qa_image_path = os.path.join(dataset, 'augmented_' + img['file_name'])
-            visualize_bboxes(transformed_image.copy(), transformed_bboxes, transformed_category_ids, category_names, qa_image_path)
+            visualize_bboxes(transformed_image.copy(), transformed_bboxes, transformed_category_ids, category_names,
+                             qa_image_path)
 
             # Update JSON annotations for augmented image
             new_img_id = len(augmented_images) + 1
@@ -112,6 +116,7 @@ def augment_dataset(base_dir):
         new_annotation_file = os.path.join(augmented_dir, 'augmented_instances_default.json')
         with open(new_annotation_file, 'w') as f:
             json.dump({"images": augmented_images, "annotations": augmented_annotations, "categories": categories}, f)
+
 
 # Path to the dataset directory
 base_dir = r"C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\AAPL\10-Q"

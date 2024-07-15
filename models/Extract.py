@@ -13,7 +13,6 @@ from typing import Dict, List
 import re
 from dateutil import parser
 
-from config.filepaths import ROOT_DIR
 from database.database import db_connector
 
 
@@ -23,7 +22,7 @@ class Extract:
 
     """
 
-    def __init__(self, symbol, filings_dir, model_path):  # model_path: str, image_path: str):
+    def __init__(self, symbol, filings_dir, model_path):
         """
         Initializes the DataTableExtractor with the given model and image paths.
 
@@ -449,12 +448,26 @@ if __name__ == "__main__":
     # extractor = Extract(model_path=args.model_path, image_path=args.image_path)
     # frame = extractor.run()
 
+    # model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train34\weights\best.pt"
+    # filings_dir = r"C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\AON\10-Q\0001445305-14-004665"
+    #
+    # self = Extract(symbol='AON',
+    #                filings_dir=filings_dir,
+    #                model_path=model_path)
+    #
+    # cash_flow, balance_sheet, income_statement = self.run()
+    # self.save_data()
+
+    symbol = 'AON'
+    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\AON'
     model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train34\weights\best.pt"
-    filings_dir = r"C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\ADI\10-Q\0000006281-14-000027"
 
-    self = Extract(symbol='ADI',
-                   filings_dir=filings_dir,
-                   model_path=model_path)
+    filings = os.listdir(os.path.join(symbol_dir, '10-Q'))
 
-    cash_flow, balance_sheet, income_statement = self.run()
-    self.save_data()
+    for filing in filings[2:]:
+        self = Extract(symbol='AON',
+                       filings_dir=os.path.join(symbol_dir, '10-Q', filing),
+                       model_path=model_path)
+
+        cash_flow, balance_sheet, income_statement = self.run()
+        self.save_data()

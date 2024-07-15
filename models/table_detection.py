@@ -104,7 +104,7 @@ def detect_tables(image, model, feature_extractor, padding=250):
     return padded_boxes
 
 
-def process_document(html_file):
+def process_document(html_file, output_dir):
     logging.info(f"Processing document: {html_file}")
 
     # Extract the stock symbol from the path
@@ -123,12 +123,6 @@ def process_document(html_file):
     logging.info(f"Converted PDF to {len(images)} images")
 
     logging.info("Loading TableTransformer model and feature extractor")
-
-    # Set the output directory to the report level
-    output_dir = os.path.join(os.path.dirname(html_file), 'tables')
-
-    if os.path.exists(output_dir):
-        return
 
     # Create a directory to store table screenshots for the stock symbol
     os.makedirs(output_dir, exist_ok=True)
@@ -169,7 +163,13 @@ def main(symbol):
             if file == "primary-document.html":
                 html_file = os.path.join(root, file)
                 try:
-                    process_document(html_file)
+                    # Set the output directory to the report level
+                    output_dir = os.path.join(os.path.dirname(html_file), 'tables')
+
+                    if os.path.exists(output_dir):
+                        return
+
+                    process_document(html_file, output_dir)
                 except Exception as e:
                     logging.error(f"Error processing document: {html_file}")
                     logging.error(str(e))
