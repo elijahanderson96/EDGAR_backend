@@ -65,8 +65,7 @@ db.run_query('CREATE SCHEMA IF NOT EXISTS financials;', return_df=False)
 db.run_query('''
     CREATE TABLE IF NOT EXISTS metadata.symbols (
         symbol_id SERIAL PRIMARY KEY,
-        symbol VARCHAR(255) UNIQUE NOT NULL,
-        title VARCHAR(255) UNIQUE NOT NULL,
+        symbol VARCHAR(255) UNIQUE NOT NULL
     );
 ''', return_df=False)
 
@@ -186,7 +185,7 @@ def populate_dates_table():
 
 def populate_symbols_table(symbols):
     # Insert DataFrame into metadata.symbols table
-    db.insert_dataframe(symbols[['symbol', 'title']], name='symbols', schema='metadata', if_exists='append')
+    db.insert_dataframe(symbols[['symbol']], name='symbols', schema='metadata', if_exists='append')
 
 
 populate_dates_table()
