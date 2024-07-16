@@ -477,8 +477,8 @@ if __name__ == "__main__":
     # cash_flow, balance_sheet, income_statement = self.run()
     # self.save_data()
 
-    symbol = 'AMT'
-    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\AMT'
+    symbol = 'MCK'
+    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\MCK'
     model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train34\weights\best.pt"
 
     filings = os.listdir(os.path.join(symbol_dir, '10-Q'))

@@ -82,7 +82,7 @@ def detect_tables(image, model, feature_extractor, padding=250):
 
     # Process the model outputs to get the bounding boxes of the detected tables
     width, height = image.size
-    results = feature_extractor.post_process_object_detection(outputs, threshold=0.6, target_sizes=[(height, width)])[0]
+    results = feature_extractor.post_process_object_detection(outputs, threshold=0.3, target_sizes=[(height, width)])[0]
 
     # Convert the tensor values to plain Python values
     boxes = [box.tolist() for box in results['boxes']]
