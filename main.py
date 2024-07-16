@@ -47,8 +47,9 @@ def main():
         run_command(command)
 
     # # now we classify the tables as balance sheet, cash flow, income, or nothing.
-    command = ['python', os.path.join(script_dir, 'models', 'Classify.py')] + latest_report_symbols[11:16] #'--test'
+    command = ['python', os.path.join(script_dir, 'models', 'Classify.py')] + latest_report_symbols[11:16]
     run_command(command)
+
 
 if __name__ == "__main__":
     main()

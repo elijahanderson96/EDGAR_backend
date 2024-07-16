@@ -47,6 +47,8 @@ class Extract:
 
         self.image_paths = self.get_image_paths()
 
+        print(self.image_paths)
+
         # Our images are labeled simply. These are the labels we use to extract all relevant information from a table.
         self.class_names = ["Unit", "Data", "Column Title", "Column Group Title"]
         self.class_text_mapping = {class_name: [] for class_name in self.class_names}
@@ -90,17 +92,33 @@ class Extract:
         tags = soup.find_all(string=re.compile(r"(?i)For the (?:Quarterly|quarterly) period ended"))
 
         if tags:
-            # Extract the text from the next tag
-            next_tag = tags[0].find_next()
-            if next_tag:
-                date_string = next_tag.get_text(strip=True)
-                try:
-                    report_date = parser.parse(date_string).strftime("%Y-%m-%d")
-                    return report_date
-                except ValueError:
-                    logging.error("Invalid date format.")
-            else:
-                logging.error("Date not found in the next tag.")
+            for tag in tags:
+                # Extract the text from the current tag
+                combined_text = tag + tag.find_next().get_text(strip=True) if tag.find_next() else tag
+                date_match = re.search(r"(\w+ \d{1,2}, \d{4})", combined_text)
+
+                if date_match:
+                    date_string = date_match.group(0)
+                    try:
+                        report_date = parser.parse(date_string).strftime("%Y-%m-%d")
+                        return report_date
+                    except ValueError:
+                        logging.error("Invalid date format in tag.")
+                else:
+                    # If not found in the current tag, check the next tag
+                    next_tag = tag.find_next()
+                    if next_tag:
+                        date_string = next_tag.get_text(strip=True)
+                        date_match = re.search(r"(\w+ \d{1,2}, \d{4})", date_string)
+                        if date_match:
+                            date_string = date_match.group(0)
+                            try:
+                                report_date = parser.parse(date_string).strftime("%Y-%m-%d")
+                                return report_date
+                            except ValueError:
+                                logging.error("Invalid date format in next tag.")
+                    else:
+                        logging.error("Date not found in the next tag.")
         else:
             logging.error("Quarterly period text not found in the HTML content.")
         return None
@@ -120,7 +138,7 @@ class Extract:
             if os.path.exists(category_dir):
                 for root, _, files in os.walk(category_dir):
                     for file in files:
-                        if file.endswith(".png"):
+                        if file.endswith(".png") and 'annotated_image' not in file:
                             image_paths[category].append(os.path.join(root, file))
 
         return image_paths
@@ -415,6 +433,7 @@ class Extract:
 
         for table_name, dataframe in tables.items():
             if dataframe is not None and not dataframe.empty:
+                dataframe = dataframe.T.reset_index()
                 # Collapse dataframe to JSON-like dictionary
                 data_json = dataframe.to_dict(orient='records')
 
@@ -458,14 +477,15 @@ if __name__ == "__main__":
     # cash_flow, balance_sheet, income_statement = self.run()
     # self.save_data()
 
-    symbol = 'AON'
-    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\AON'
+    symbol = 'AMT'
+    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\AMT'
     model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train34\weights\best.pt"
 
     filings = os.listdir(os.path.join(symbol_dir, '10-Q'))
 
-    for filing in filings[2:]:
-        self = Extract(symbol='AON',
+    for filing in filings:
+        print(f'PROCCESSING {filing}...')
+        self = Extract(symbol=symbol,
                        filings_dir=os.path.join(symbol_dir, '10-Q', filing),
                        model_path=model_path)
 
