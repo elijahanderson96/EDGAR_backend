@@ -19,3 +19,6 @@ db_config = {
 }
 
 dsn = f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['dbname']}"
+
+AA_PASSWORD = os.getenv("AA_PASSWORD")
+AA_USERNAME = os.getenv("AA_USERNAME")

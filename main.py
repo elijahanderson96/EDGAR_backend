@@ -41,13 +41,14 @@ def main():
     # Now we detect all the tables.
     latest_report_symbols = os.listdir(os.path.join(script_dir, 'latest_quarterly_reports', 'sec-edgar-filings'))
 
-    for symbol in latest_report_symbols[11:16]:
-        command = ['python', os.path.join(script_dir, 'models', 'table_detection.py'), symbol]
-        time.sleep(1)
-        run_command(command)
+    for symbol in latest_report_symbols:
+        if symbol == 'MCK':
+            command = ['python', os.path.join(script_dir, 'models', 'table_detection.py'), symbol]
+            time.sleep(1)
+            run_command(command)
 
     # # now we classify the tables as balance sheet, cash flow, income, or nothing.
-    command = ['python', os.path.join(script_dir, 'models', 'Classify.py')] + latest_report_symbols[11:16]
+    command = ['python', os.path.join(script_dir, 'models', 'Classify.py')] + ['MCK']#latest_report_symbols[16:20]
     run_command(command)
 
 
