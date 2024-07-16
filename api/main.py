@@ -41,4 +41,4 @@ async def shutdown():
 app.include_router(auth_router)
 app.include_router(company_facts_router)
 app.include_router(benchmark_router)
-app.include_router(financials_router)
+app.include_router(financials_router, prefix='/financials')

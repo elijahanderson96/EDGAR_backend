@@ -1,3 +1,6 @@
+import json
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
 import logging
@@ -24,26 +27,33 @@ async def fetch_financial_data(table: str, symbol: Optional[str], report_date: O
         WHERE 1=1
     """
     params = []
+    param_index = 1
 
     if symbol:
-        query += " AND s.symbol = $1"
+        query += f" AND s.symbol = ${param_index}"
         params.append(symbol)
+        param_index += 1
     if report_date:
-        query += " AND rd.date = $2"
-        params.append(report_date)
+        query += f" AND rd.date = ${param_index}"
+        params.append(datetime.strptime(report_date, '%Y-%m-%d'))
+        param_index += 1
     if filing_date:
-        query += " AND fd.date = $3"
-        params.append(filing_date)
+        query += f" AND fd.date = ${param_index}"
+        params.append(datetime.strptime(filing_date, '%Y-%m-%d'))
+        param_index += 1
     if latest_n_records:
-        query += " ORDER BY f.id DESC LIMIT $4"
+        query += f" ORDER BY f.id DESC LIMIT ${param_index}"
         params.append(latest_n_records)
 
     records = await db_connector.run_query(query, params=params)
-    print(records)
+
     if records.empty:
         raise HTTPException(status_code=404, detail="No records found")
 
-    print(records.to_dict(orient='records'))
+    records['data'] = records['data'].apply(json.loads)
+    records['report_date'] = records['report_date'].apply(lambda x: x.strftime('%Y-%m-%d'))
+    records['filing_date'] = records['filing_date'].apply(lambda x: x.strftime('%Y-%m-%d'))
+
     return records.to_dict(orient='records')
 
 
