@@ -1,6 +1,5 @@
 import argparse
 from sec_edgar_downloader import Downloader
-
 import sys
 import os
 
@@ -12,13 +11,17 @@ sys.path.append(root_dir)
 from edgar.symbols import symbols
 
 
-def download_10q_reports(download_date, download_dir):
-    symbols_list = symbols['symbol'].to_list()
+def download_10q_reports(download_date, download_dir, symbol=None):
     dl = Downloader("Elijah", "elijahanderson96@gmail.com", download_dir)
 
-    for symbol in symbols_list:
-        print(f'Getting 10Q for {symbol} on {download_date}')
-        dl.get("10-Q", symbol, after=download_date, download_details=True)
+    if symbol:
+        symbols_list = [symbol]
+    else:
+        symbols_list = symbols['symbol'].to_list()
+
+    for sym in symbols_list:
+        print(f'Getting 10Q for {sym} on {download_date}')
+        dl.get("10-Q", sym, after=download_date, download_details=True)
 
 
 if __name__ == "__main__":
@@ -26,6 +29,7 @@ if __name__ == "__main__":
     parser.add_argument('download_date', type=str, help='Date for the 10-Q reports (YYYY-MM-DD)')
     parser.add_argument('--download_dir', type=str, default='latest_quarterly_reports',
                         help='Directory to download reports')
+    parser.add_argument('--symbol', type=str, help='Specific symbol to download the report for')
 
     args = parser.parse_args()
-    download_10q_reports(args.download_date, args.download_dir)
+    download_10q_reports(args.download_date, args.download_dir, args.symbol)
