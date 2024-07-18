@@ -71,7 +71,7 @@ def preprocess_pdf(pdf_file):
     pass
 
 
-def detect_tables(image, model, feature_extractor, padding=250):
+def detect_tables(image, model, feature_extractor, padding=500):
     logging.info("Detecting tables in the image")
     # Preprocess the image
     encoding = feature_extractor(image, return_tensors="pt")

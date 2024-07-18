@@ -13,12 +13,10 @@ model = YOLO("yolov8n-cls.pt")  # Load a pretrained classification model
 
 # Hyperparameters
 hyperparameters = {
-    'batch': 8,        # Batch size
-    'imgsz': 640,       # Image size
+    'batch': 16,        # Batch size
+    'imgsz': 1280,       # Image size
     'lr0': .01,
-    'epochs': 75,       # Number of epochs
-    'momentum': 0.937,  # Momentum
-    'weight_decay': 0.0005,  # Weight decay
+    'epochs': 100,       # Number of epochs
     'patience': 10,     # Patience for early stopping
 }
 

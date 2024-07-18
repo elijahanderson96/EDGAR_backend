@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from statistics import median
 
 import cv2
@@ -14,6 +15,11 @@ import re
 from dateutil import parser
 
 from database.database import db_connector
+
+# Add the parent directory to the sys.path to locate the edgar module
+script_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.abspath(os.path.join(script_dir, os.pardir))
+sys.path.append(root_dir)
 
 
 class Extract:
@@ -39,6 +45,9 @@ class Extract:
         self.filed_as_of_date = self._extract_filed_as_of_date()
         self.report_date = self.extract_report_date()
 
+        print(f"Filed as of date determined to be: {self.filed_as_of_date}")
+        print(f"Report date determined to be: {self.report_date}")
+
         # Set up table directory path
         self.table_dir = os.path.join(self.filings_dir, "tables")
 
@@ -58,7 +67,7 @@ class Extract:
         self.income_statement = None
 
         self.model = YOLO(model_path)
-        logging.info(f"Model loaded from {model_path}.")
+        print(f"Model loaded from {model_path}.")
         self.reader = easyocr.Reader(['en'])
 
     def find_primary_document(self):
@@ -93,9 +102,15 @@ class Extract:
 
         if tags:
             for tag in tags:
-                # Extract the text from the current tag
-                combined_text = tag + tag.find_next().get_text(strip=True) if tag.find_next() else tag
-                date_match = re.search(r"(\w+ \d{1,2}, \d{4})", combined_text)
+                # Look for the date in the next few sibling elements
+                next_siblings = tag.find_all_next(string=True, limit=5)
+                combined_text = " ".join([tag] + [sibling.strip() for sibling in next_siblings])
+
+                # Replace non-breaking spaces and HTML entities with regular spaces
+                combined_text = combined_text.replace(u'\xa0', ' ').replace('&nbsp;', ' ')
+
+                # Search for the date within the combined text
+                date_match = re.search(r"(\w+\s+\d{1,2},\s+\d{4})", combined_text)
 
                 if date_match:
                     date_string = date_match.group(0)
@@ -104,21 +119,6 @@ class Extract:
                         return report_date
                     except ValueError:
                         logging.error("Invalid date format in tag.")
-                else:
-                    # If not found in the current tag, check the next tag
-                    next_tag = tag.find_next()
-                    if next_tag:
-                        date_string = next_tag.get_text(strip=True)
-                        date_match = re.search(r"(\w+ \d{1,2}, \d{4})", date_string)
-                        if date_match:
-                            date_string = date_match.group(0)
-                            try:
-                                report_date = parser.parse(date_string).strftime("%Y-%m-%d")
-                                return report_date
-                            except ValueError:
-                                logging.error("Invalid date format in next tag.")
-                    else:
-                        logging.error("Date not found in the next tag.")
         else:
             logging.error("Quarterly period text not found in the HTML content.")
         return None
@@ -196,8 +196,8 @@ class Extract:
 
             cv2.imwrite(result_output_path, img_with_legend)
 
-            logging.info(f"Inference results: {results}")
-            logging.info(f"Annotated image saved to: {result_output_path}")
+            print(f"Inference results: {results}")
+            print(f"Annotated image saved to: {result_output_path}")
             return results
         except Exception as e:
             logging.error(f"Error during inference: {e}")
@@ -264,7 +264,7 @@ class Extract:
                 elif class_name == 'Column Group Title':
                     self.class_text_mapping[class_name].extend([text for (bbox, text, prob) in ocr_result])
 
-            logging.info(f"Extracted text from bounding boxes: {self.class_text_mapping}")
+            print(f"Extracted text from bounding boxes: {self.class_text_mapping}")
             return self.class_text_mapping
 
         except Exception as e:
@@ -454,7 +454,7 @@ class Extract:
                     record['symbol_id'], record['report_date_id'], record['filing_date_id'], record['data']),
                                        return_df=False)
 
-        logging.info("Data saved to the database.")
+        print("Data saved to the database.")
 
 
 if __name__ == "__main__":
@@ -479,15 +479,15 @@ if __name__ == "__main__":
 
     symbol = 'MCK'
     symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\MCK'
-    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train34\weights\best.pt"
+    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train35\weights\best.pt"
 
     filings = os.listdir(os.path.join(symbol_dir, '10-Q'))
 
-    for filing in filings:
-        print(f'PROCCESSING {filing}...')
-        self = Extract(symbol=symbol,
-                       filings_dir=os.path.join(symbol_dir, '10-Q', filing),
-                       model_path=model_path)
-
-        cash_flow, balance_sheet, income_statement = self.run()
-        self.save_data()
+    # for filing in filings:
+    #     print(f'PROCCESSING {filing}...')
+    #     self = Extract(symbol=symbol,
+    #                    filings_dir=os.path.join(symbol_dir, '10-Q', filing),
+    #                    model_path=model_path)
+    #
+    #     cash_flow, balance_sheet, income_statement = self.run()
+    #     self.save_data()

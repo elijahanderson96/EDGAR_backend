@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Load pre-trained YOLOv8 model
 print("Loading pre-trained YOLOv8 model...")
-model = YOLO(r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\classify\train9\weights\best.pt")
+model = YOLO(r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\classify\train16\weights\best.pt")
 
 
 def perform_inference(image_path, model):
