@@ -21,7 +21,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Load pre-trained YOLOv8 model
 print("Loading pre-trained YOLOv8 model...")
-model = YOLO(r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\classify\train16\weights\best.pt")
+model = YOLO(r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\classify\train17\weights\best.pt")
+
+CONFIDENCE_THRESHOLD = 0.8  # Set your desired confidence threshold here
 
 
 def perform_inference(image_path, model):
@@ -31,6 +33,8 @@ def perform_inference(image_path, model):
         results = model(img)
         class_labels = ["balance_sheet", "cash_flow", "income", "nothing"]
         for result in results:
+            print(result.probs.top1)
+            print(result.probs)
             classification = class_labels[result.probs.top1]
             return classification
 
@@ -43,20 +47,25 @@ def classify_and_move(files):
         if os.path.isfile(file_path):
             try:
                 print(f"Processing file: {file_path}")
-                classification = perform_inference(file_path, model)
-                print(f"Classified {file_path} as {classification}")
+                classification, confidence = perform_inference(file_path, model)
 
-                # Move the file to the appropriate directory
-                parent_dir = os.path.dirname(file_path)
-                destination_dir = os.path.join(parent_dir, classification)
-                print(f"Creating directory: {destination_dir}")
-                os.makedirs(destination_dir, exist_ok=True)
+                if classification:
+                    print(f"Classified {file_path} as {classification} with confidence {confidence:.2f}")
 
-                destination_path = os.path.join(destination_dir, os.path.basename(file_path))
-                shutil.move(file_path, destination_path)
+                    # Move the file to the appropriate directory
+                    parent_dir = os.path.dirname(file_path)
+                    destination_dir = os.path.join(parent_dir, classification)
+                    print(f"Creating directory: {destination_dir}")
+                    os.makedirs(destination_dir, exist_ok=True)
 
-                print(f"Moved file {file_path} to {destination_path}")
-                time.sleep(2)
+                    destination_path = os.path.join(destination_dir, os.path.basename(file_path))
+                    shutil.move(file_path, destination_path)
+
+                    print(f"Moved file {file_path} to {destination_path}")
+                else:
+                    print(f"Skipping file {file_path} due to low confidence")
+
+                time.sleep(1)
             except Exception as e:
                 logging.error(f"Error processing file {file_path}: {e}")
 
@@ -76,7 +85,6 @@ def main(symbol_dirs):
                 all_files.append(file_path)
     print(f"All files to process: {all_files}")
     classify_and_move(all_files)
-
 
 
 if __name__ == "__main__":

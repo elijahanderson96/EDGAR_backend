@@ -137,10 +137,11 @@ def process_document(html_file, output_dir):
         # Detect tables in the image
         table_boxes = detect_tables(image, model, feature_extractor)
 
-        # Visualize table regions on the image and save the screenshots
-        for j, box in enumerate(table_boxes):
+        # Visualize the first detected table only and save the screenshot
+        if table_boxes:
+            box = table_boxes[0]
             table_image = image.crop(box)
-            output_path = os.path.join(output_dir, f"{report_name}_table_page{i + 1}_table{j + 1}.png")
+            output_path = os.path.join(output_dir, f"{report_name}_table_page{i + 1}.png")
             table_image.save(output_path)
             logging.info(f"Saved table screenshot: {output_path}")
 

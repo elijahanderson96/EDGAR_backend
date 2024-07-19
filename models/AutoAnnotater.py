@@ -89,13 +89,13 @@ class YOLOV8DetectionFunction:
         return shapes
 
 
-model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train35\weights\best.pt"
+model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train37\weights\best.pt"
 
 # Log into the CVAT server
 with make_client(host="http://localhost:8080",
                  credentials=(AA_USERNAME, AA_PASSWORD)) as client:
     # Annotate task 12345 using the custom model
-    cvataa.annotate_task(client, 49,
+    cvataa.annotate_task(client, 50,
                          YOLOV8DetectionFunction(model_path=model_path,
                                                  labels=["Unit", "Data", "Column Title", "Column Group Title"]),
                          )

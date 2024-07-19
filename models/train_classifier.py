@@ -22,7 +22,7 @@ hyperparameters = {
 
 # Starting training
 logging.info("Starting training...")
-model.train(data=r'C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier', **hyperparameters)
+model.train(data=r'C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier')#, **hyperparameters)
 logging.info("Training complete.")
 
 
