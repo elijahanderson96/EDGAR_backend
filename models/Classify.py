@@ -9,7 +9,6 @@ import shutil
 import sys
 import os
 
-# Add the parent directory to the sys.path to locate the edgar module
 script_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.abspath(os.path.join(script_dir, os.pardir))
 sys.path.append(root_dir)
@@ -21,9 +20,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Load pre-trained YOLOv8 model
 print("Loading pre-trained YOLOv8 model...")
-model = YOLO(r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\classify\train17\weights\best.pt")
-
-CONFIDENCE_THRESHOLD = 0.8  # Set your desired confidence threshold here
+model = YOLO(r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\classify\train16\weights\best.pt")
 
 
 def perform_inference(image_path, model):
@@ -32,14 +29,26 @@ def perform_inference(image_path, model):
         img = cv2.imread(image_path)
         results = model(img)
         class_labels = ["balance_sheet", "cash_flow", "income", "nothing"]
+
         for result in results:
-            print(result.probs.top1)
-            print(result.probs)
-            classification = class_labels[result.probs.top1]
+            top_confidence = result.probs.top1conf.item()
+            top_class_index = result.probs.top1
+            print(f"Detected class: {class_labels[top_class_index]} with confidence: {top_confidence:.4f}")
+
+            if top_confidence >= 0.85:
+                classification = class_labels[top_class_index]
+            else:
+                print(
+                    f"Detected class: {class_labels[top_class_index]} "
+                    f"does not meet confidence of .85, classifying as nothing.")
+
+                classification = "nothing"
+
             return classification
 
     except Exception as e:
-        logging.error(f"Error during inference on image {image_path}: {e}")
+        print(f"Error during inference on image {image_path}: {e}")
+        return "nothing"
 
 
 def classify_and_move(files):
@@ -47,25 +56,19 @@ def classify_and_move(files):
         if os.path.isfile(file_path):
             try:
                 print(f"Processing file: {file_path}")
-                classification, confidence = perform_inference(file_path, model)
+                classification = perform_inference(file_path, model)
+                print(f"Classified {file_path} as {classification}")
 
-                if classification:
-                    print(f"Classified {file_path} as {classification} with confidence {confidence:.2f}")
+                # Move the file to the appropriate directory
+                parent_dir = os.path.dirname(file_path)
+                destination_dir = os.path.join(parent_dir, classification)
+                print(f"Creating directory: {destination_dir}")
+                os.makedirs(destination_dir, exist_ok=True)
 
-                    # Move the file to the appropriate directory
-                    parent_dir = os.path.dirname(file_path)
-                    destination_dir = os.path.join(parent_dir, classification)
-                    print(f"Creating directory: {destination_dir}")
-                    os.makedirs(destination_dir, exist_ok=True)
+                destination_path = os.path.join(destination_dir, os.path.basename(file_path))
+                shutil.move(file_path, destination_path)
 
-                    destination_path = os.path.join(destination_dir, os.path.basename(file_path))
-                    shutil.move(file_path, destination_path)
-
-                    print(f"Moved file {file_path} to {destination_path}")
-                else:
-                    print(f"Skipping file {file_path} due to low confidence")
-
-                time.sleep(1)
+                print(f"Moved file {file_path} to {destination_path}")
             except Exception as e:
                 logging.error(f"Error processing file {file_path}: {e}")
 
@@ -80,7 +83,6 @@ def main(symbol_dirs):
             for file in files:
                 if not file.endswith(".png"):
                     continue
-                print(file)
                 file_path = os.path.join(root, file)
                 all_files.append(file_path)
     print(f"All files to process: {all_files}")
@@ -94,3 +96,4 @@ if __name__ == "__main__":
 
     print(f"Directories to process: {args.symbol_dirs}")
     main(args.symbol_dirs)
+    # main(['UNH'])

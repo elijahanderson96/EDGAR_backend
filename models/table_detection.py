@@ -3,24 +3,27 @@ import os
 import sys
 import uuid
 from pdf2image import convert_from_path
-from transformers import TableTransformerForObjectDetection, DetrFeatureExtractor
+# from transformers import TableTransformerForObjectDetection, DetrFeatureExtractor
 import pdfkit
 import logging
 import torch
 
+
 # Configure logging
 logging.getLogger().setLevel(logging.INFO)
+script_dir = os.path.dirname(os.path.abspath(__file__))
 
 config = pdfkit.configuration(
     wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')  # r'/usr/local/bin/wkhtmltopdf')
 
-model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
-feature_extractor = DetrFeatureExtractor.from_pretrained("microsoft/table-transformer-detection")
+
+# model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
+# feature_extractor = DetrFeatureExtractor.from_pretrained("microsoft/table-transformer-detection")
 
 
-def convert_html_to_pdf(html_file, pdf_file, css_file=None):
+def convert_html_to_pdf(html_file, pdf_file):
+    css_file = os.path.join(os.path.dirname(script_dir), 'generic_styler.css')
     logging.info(f"Converting HTML file '{html_file}' to PDF")
-    # css_file = r'/sec-edgar-filings/table_styler.css'
     output_html_file = rf'C:\Users\Elijah\PycharmProjects\edgar_backend\{uuid.uuid4().hex}.html'
 
     # Read the HTML file
@@ -42,21 +45,19 @@ def convert_html_to_pdf(html_file, pdf_file, css_file=None):
         logging.info(f"Styled HTML file '{output_html_file}' created successfully")
 
     options = {
-        'page-size': 'Letter',
-        'margin-top': '0.75in',
-        'margin-right': '0.75in',
-        'margin-bottom': '0.75in',
-        'margin-left': '0.75in',
+        'page-size': 'A4',
+        'margin-top': '0.5in',
+        'margin-right': '0.5in',
+        'margin-bottom': '0.5in',
+        'margin-left': '0.5in',
         'encoding': "UTF-8",
+        'no-outline': None,
+        'enable-local-file-access': '',
+        'zoom': '1.0',  # Adjust the zoom level if needed
+        'disable-smart-shrinking': '',  # Prevents content from shrinking too much
         'custom-header': [
             ('Accept-Encoding', 'gzip')
         ],
-        'cookie': [
-            ('cookie-name1', 'cookie-value1'),
-            ('cookie-name2', 'cookie-value2'),
-        ],
-        'no-outline': None,
-        "enable-local-file-access": ""
     }
 
     # Convert the HTML to a PDF file
@@ -82,7 +83,7 @@ def detect_tables(image, model, feature_extractor, padding=500):
 
     # Process the model outputs to get the bounding boxes of the detected tables
     width, height = image.size
-    results = feature_extractor.post_process_object_detection(outputs, threshold=0.3, target_sizes=[(height, width)])[0]
+    results = feature_extractor.post_process_object_detection(outputs, threshold=0.1, target_sizes=[(height, width)])[0]
 
     # Convert the tensor values to plain Python values
     boxes = [box.tolist() for box in results['boxes']]
@@ -119,7 +120,7 @@ def process_document(html_file, output_dir):
 
     # Convert PDF to images
     logging.info(f"Converting PDF file '{pdf_file}' to images")
-    images = convert_from_path(pdf_file, dpi=300)
+    images = convert_from_path(pdf_file, dpi=400)
     logging.info(f"Converted PDF to {len(images)} images")
 
     logging.info("Loading TableTransformer model and feature extractor")
@@ -129,21 +130,23 @@ def process_document(html_file, output_dir):
 
     # Process each page image
     for i, image in enumerate(images):
-        if i > 10:
+        output_path = os.path.join(output_dir, f"{report_name}_table_page{i + 1}.png")
+        image.save(output_path)
+        if i > 12:
             break
 
         logging.info(f"Processing page {i + 1}/{len(images)}")
-
-        # Detect tables in the image
-        table_boxes = detect_tables(image, model, feature_extractor)
-
-        # Visualize the first detected table only and save the screenshot
-        if table_boxes:
-            box = table_boxes[0]
-            table_image = image.crop(box)
-            output_path = os.path.join(output_dir, f"{report_name}_table_page{i + 1}.png")
-            table_image.save(output_path)
-            logging.info(f"Saved table screenshot: {output_path}")
+        #
+        # # Detect tables in the image
+        # table_boxes = detect_tables(image, model, feature_extractor)
+        #
+        # # Visualize the first detected table only and save the screenshot
+        # if table_boxes:
+        #     box = table_boxes[0]
+        #     table_image = image.crop(box)
+        #     output_path = os.path.join(output_dir, f"{report_name}_table_page{i + 1}.png")
+        #     image.save(output_path)
+        #     logging.info(f"Saved table screenshot: {output_path}")
 
     # Clean up temporary files
     logging.info(f"Removing temporary PDF file '{pdf_file}'")

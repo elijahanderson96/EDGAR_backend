@@ -1,7 +1,6 @@
 import os
 from ultralytics import YOLO
 import cv2
-
 import logging
 
 # Set up logging
@@ -9,21 +8,22 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 output_dir = r"C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset"
 
-# Training YOLOv8
+# Initialize YOLOv8 model from scratch
+logging.info("Initializing YOLOv8 model from scratch...")
+model = YOLO()
 
-logging.info("Loading pre-trained YOLOv8 model...")
-model = YOLO('yolov8n.pt')
-
-# hyperparameters = {
-#     'batch': 4,  # Batch size
-#     'imgsz': 1280,  # Image size
-#     'epochs': 300,  # Number of epochs
-#     'lr0': 0.001,  # Learning rate
-#     'patience': 10,  # Patience for early stopping
-# }
+# Specify hyperparameters for training
+hyperparameters = {
+    'batch': .8,
+    'imgsz': 1600,       # Image size
+    'epochs': 300,  # Number of epochs
+    #'lr0': 0.001,        # Initial learning rate
+    'patience': 25,  # Patience for early stopping
+    # 'pretrained': False  # Ensure no pre-trained weights are used
+}
 
 logging.info("Starting training...")
-model.train(data=os.path.join(output_dir, "data.yaml"))# **hyperparameters)
+model.train(data=os.path.join(output_dir, "data.yaml"), **hyperparameters)
 logging.info("Training complete.")
 
 

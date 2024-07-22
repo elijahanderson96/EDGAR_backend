@@ -56,8 +56,6 @@ class Extract:
 
         self.image_paths = self.get_image_paths()
 
-        print(self.image_paths)
-
         # Our images are labeled simply. These are the labels we use to extract all relevant information from a table.
         self.class_names = ["Unit", "Data", "Column Title", "Column Group Title"]
         self.class_text_mapping = {class_name: [] for class_name in self.class_names}
@@ -196,7 +194,6 @@ class Extract:
 
             cv2.imwrite(result_output_path, img_with_legend)
 
-            print(f"Inference results: {results}")
             print(f"Annotated image saved to: {result_output_path}")
             return results
         except Exception as e:

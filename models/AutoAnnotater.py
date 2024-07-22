@@ -11,7 +11,7 @@ from config.configs import AA_PASSWORD, AA_USERNAME
 
 
 class YOLOV8DetectionFunction:
-    def __init__(self, model_path: str, labels: List[str], confidence_threshold: float = 0.75) -> None:
+    def __init__(self, model_path: str, labels: List[str], confidence_threshold: float = .5) -> None:
         # Load the YOLOv8 model
         self._model = YOLO(model_path)
         self._labels = labels
@@ -27,7 +27,7 @@ class YOLOV8DetectionFunction:
             ]
         )
 
-    def letterbox(self, image, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True):
+    def letterbox(self, image, new_shape=(1280, 1280), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True):
         # Resize image to a 32-pixel-multiple rectangle
         shape = image.shape[:2]  # current shape [height, width]
         if isinstance(new_shape, int):
@@ -89,13 +89,13 @@ class YOLOV8DetectionFunction:
         return shapes
 
 
-model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train37\weights\best.pt"
+model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train55\weights\best.pt"
 
 # Log into the CVAT server
 with make_client(host="http://localhost:8080",
                  credentials=(AA_USERNAME, AA_PASSWORD)) as client:
     # Annotate task 12345 using the custom model
-    cvataa.annotate_task(client, 50,
+    cvataa.annotate_task(client, 59,
                          YOLOV8DetectionFunction(model_path=model_path,
                                                  labels=["Unit", "Data", "Column Title", "Column Group Title"]),
                          )

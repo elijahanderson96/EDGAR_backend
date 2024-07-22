@@ -13,16 +13,14 @@ model = YOLO("yolov8n-cls.pt")  # Load a pretrained classification model
 
 # Hyperparameters
 hyperparameters = {
-    'batch': 16,        # Batch size
-    'imgsz': 1280,       # Image size
-    'lr0': .01,
+    'batch': 64,        # Batch size
     'epochs': 100,       # Number of epochs
     'patience': 10,     # Patience for early stopping
 }
 
 # Starting training
 logging.info("Starting training...")
-model.train(data=r'C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier')#, **hyperparameters)
+model.train(data=r'C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_classifier', **hyperparameters)
 logging.info("Training complete.")
 
 
