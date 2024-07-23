@@ -11,7 +11,7 @@ from config.configs import AA_PASSWORD, AA_USERNAME
 
 
 class YOLOV8DetectionFunction:
-    def __init__(self, model_path: str, labels: List[str], confidence_threshold: float = .5) -> None:
+    def __init__(self, model_path: str, labels: List[str], confidence_threshold: float = .40) -> None:
         # Load the YOLOv8 model
         self._model = YOLO(model_path)
         self._labels = labels
@@ -89,13 +89,13 @@ class YOLOV8DetectionFunction:
         return shapes
 
 
-model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train55\weights\best.pt"
+model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train5\weights\best.pt"
 
 # Log into the CVAT server
 with make_client(host="http://localhost:8080",
                  credentials=(AA_USERNAME, AA_PASSWORD)) as client:
     # Annotate task 12345 using the custom model
-    cvataa.annotate_task(client, 59,
+    cvataa.annotate_task(client, 65,
                          YOLOV8DetectionFunction(model_path=model_path,
                                                  labels=["Unit", "Data", "Column Title", "Column Group Title"]),
                          )

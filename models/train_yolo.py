@@ -14,8 +14,8 @@ model = YOLO()
 
 # Specify hyperparameters for training
 hyperparameters = {
-    'batch': .8,
-    'imgsz': 1600,       # Image size
+    'batch': .6,
+    'imgsz': 1280,       # Image size
     'epochs': 300,  # Number of epochs
     #'lr0': 0.001,        # Initial learning rate
     'patience': 25,  # Patience for early stopping
