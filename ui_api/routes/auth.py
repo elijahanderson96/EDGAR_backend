@@ -89,8 +89,9 @@ async def register(user_registration: UserRegistration):
     query = "INSERT INTO users.users (username, password_hash, email, auth_token) VALUES (%s, %s, %s, %s)"
     db_connector.run_query(query, (username, password_hash, email, auth_token), return_df=False)
 
+    host = os.getenv("HOST")
     # Send the authentication email
-    authentication_link = f"http://localhost:8000/authenticate/{auth_token}"
+    authentication_link = f"{host}/authenticate/{auth_token}"
     send_authentication_email(email, authentication_link)
 
     return JSONResponse(
