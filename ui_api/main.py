@@ -9,9 +9,15 @@ from database.async_database import db_connector
 
 app = FastAPI()
 
+origins = [
+    "https://equityexplorer.io",
+    "http://localhost",  # For local testing
+    "http://localhost:3000"  # For local React dev server
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
