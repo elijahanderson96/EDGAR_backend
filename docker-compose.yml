@@ -4,7 +4,7 @@ services:
   ui_api:
     build:
       context: .
-      dockerfile: Dockerfile.ui_api
+      dockerfile: Dockerfile_ui_api
     ports:
       - "8000:8000"
     volumes:
@@ -14,7 +14,7 @@ services:
   client_api:
     build:
       context: .
-      dockerfile: Dockerfile.client_api
+      dockerfile: Dockerfile_client_api
     ports:
       - "8001:8001"
     volumes:
