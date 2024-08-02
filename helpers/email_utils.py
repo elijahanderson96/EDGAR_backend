@@ -12,7 +12,7 @@ def is_valid_email(email):
 
 def send_authentication_email(recipient_email, authentication_link):
     smtp_server = os.getenv("SMTP_SERVER")
-    smtp_port = os.getenv("SMTP_PORT")
+    smtp_port = int(os.getenv("SMTP_PORT"))
     smtp_username = os.getenv("SMTP_USERNAME")
     smtp_password = os.getenv("SMTP_PASSWORD")
     sender_email = os.getenv("SENDER_EMAIL")
@@ -36,20 +36,42 @@ def send_authentication_email(recipient_email, authentication_link):
     Best regards,
     Bagels
     """
-
     message.attach(MIMEText(body, "plain"))
 
     try:
-        # Create a secure SSL/TLS connection
+        # Create a secure TLS connection
         server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
+        server.starttls()  # Upgrade the connection to a secure encrypted TLS connection
         server.login(smtp_username, smtp_password)
 
         # Send the email
-        server.send_message(message)
+        server.sendmail(sender_email, recipient_email, message.as_string())
 
         print(f"Authentication email sent to {recipient_email}")
     except Exception as e:
         print(f"Error sending email: {str(e)}")
     finally:
         server.quit()
+
+# Example usage
+# send_authentication_email("elijahanderson96@gmail.com", "https://example.com/authenticate")
+
+import smtplib
+
+def test_smtp_connection():
+    smtp_server = os.getenv("SMTP_SERVER")
+    smtp_port = int(os.getenv("SMTP_PORT"))
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+
+    try:
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        print("SMTP connection successful")
+    except Exception as e:
+        print(f"Error connecting to SMTP server: {str(e)}")
+    finally:
+        server.quit()
+
+test_smtp_connection()

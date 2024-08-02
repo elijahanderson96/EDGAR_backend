@@ -8,8 +8,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./ui_api:/app/ui_api
-
+      - .:/app
+    network_mode: "bridge"
 
   client_api:
     build:
@@ -18,4 +18,5 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      - ./client_api:/app/client_api
+      - .:/app
+    network_mode: "bridge"

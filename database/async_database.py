@@ -2,20 +2,20 @@ import asyncpg
 import pandas as pd
 from typing import Union, Dict, Optional, Any
 import logging
-from config.configs import dsn
+from config.configs import dsn  # Ensure this now points to the DigitalOcean connection pool
 
 
 class AsyncpgConnector:
     def __init__(self, dsn: str):
         self.dsn = dsn
-        self.pool = None
         self.logger = logging.getLogger(__name__)
 
     async def initialize(self):
-        self.pool = await asyncpg.create_pool(dsn=self.dsn)
+        # No local pool creation; assume the DSN points to the DigitalOcean connection pool
+        self.connection = await asyncpg.connect(dsn=self.dsn)
 
     async def close(self):
-        await self.pool.close()
+        await self.connection.close()
 
     async def run_query(
             self,
@@ -41,16 +41,16 @@ class AsyncpgConnector:
             result.
         """
         try:
-            async with self.pool.acquire() as connection:
-                if fetch_one:
-                    result = await connection.fetchrow(query, *params) if params else await connection.fetch(query)
-                    return result[0] if result else None
-                else:
-                    result = await connection.fetch(query, *params) if params else await connection.fetch(query)
-                    if return_df:
-                        data = [dict(record) for record in result]
-                        return pd.DataFrame(data)
-                    return None
+            if fetch_one:
+                result = await self.connection.fetchrow(query, *params) if params else await self.connection.fetch(
+                    query)
+                return result[0] if result else None
+            else:
+                result = await self.connection.fetch(query, *params) if params else await self.connection.fetch(query)
+                if return_df:
+                    data = [dict(record) for record in result]
+                    return pd.DataFrame(data)
+                return None
         except Exception as e:
             self.logger.error(f"Error occurred while executing query: {e}")
             raise e
