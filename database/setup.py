@@ -4,16 +4,24 @@ import pandas as pd
 
 from database.database import PostgreSQLConnector
 from edgar.symbols import resolve_cik_to_symbol_mapping
+from config.configs import db_config
+
+# db = PostgreSQLConnector(
+#     host="localhost",
+#     port="5432",
+#     user="postgres",
+#     password="password",
+# )
 
 db = PostgreSQLConnector(
-    host="localhost",
-    port="5432",
-    user="postgres",
-    password="password",
+    host=db_config['host'],
+    port=db_config['port'],
+    user=db_config['user'],
+    password=db_config['password'],
 )
 
 # Create the "edgar" database
-db.create_database("edgar")
+# db.create_database("edgar")
 db.dbname = "edgar"
 
 # Create the "company_facts" schema
