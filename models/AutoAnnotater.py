@@ -92,10 +92,21 @@ class YOLOV8DetectionFunction:
 model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train5\weights\best.pt"
 
 # Log into the CVAT server
-with make_client(host="http://localhost:8080",
+# with make_client(host="http://localhost:8080",
+#                  credentials=(AA_USERNAME, AA_PASSWORD)) as client:
+#     # Annotate task 12345 using the custom model
+#     cvataa.annotate_task(client, 65,
+#                          YOLOV8DetectionFunction(model_path=model_path,
+#                                                  labels=["Unit", "Data", "Column Title", "Column Group Title"]),
+#                          )
+
+print(AA_USERNAME, AA_PASSWORD)
+
+# Log into the CVAT server
+with make_client(host="https://app.cvat.ai",
                  credentials=(AA_USERNAME, AA_PASSWORD)) as client:
     # Annotate task 12345 using the custom model
-    cvataa.annotate_task(client, 65,
+    cvataa.annotate_task(client, 819553,
                          YOLOV8DetectionFunction(model_path=model_path,
                                                  labels=["Unit", "Data", "Column Title", "Column Group Title"]),
                          )

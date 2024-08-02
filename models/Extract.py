@@ -17,9 +17,9 @@ from dateutil import parser
 from database.database import db_connector
 
 # Add the parent directory to the sys.path to locate the edgar module
-script_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.abspath(os.path.join(script_dir, os.pardir))
-sys.path.append(root_dir)
+#script_dir = os.path.dirname(os.path.abspath(__file__))
+#root_dir = os.path.abspath(os.path.join(script_dir, os.pardir))
+#sys.path.append(root_dir)
 
 
 class Extract:
@@ -474,17 +474,21 @@ if __name__ == "__main__":
     # cash_flow, balance_sheet, income_statement = self.run()
     # self.save_data()
 
-    symbol = 'MCK'
-    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\MCK'
-    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train35\weights\best.pt"
+    symbol = 'MU'
+    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\MU'
+    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train5\weights\best.pt"
 
     filings = os.listdir(os.path.join(symbol_dir, '10-Q'))
 
-    # for filing in filings:
-    #     print(f'PROCCESSING {filing}...')
-    #     self = Extract(symbol=symbol,
-    #                    filings_dir=os.path.join(symbol_dir, '10-Q', filing),
-    #                    model_path=model_path)
-    #
-    #     cash_flow, balance_sheet, income_statement = self.run()
-    #     self.save_data()
+    for filing in filings:
+        print(f'PROCCESSING {filing}...')
+        self = Extract(symbol=symbol,
+                       filings_dir=os.path.join(symbol_dir, '10-Q', filing),
+                       model_path=model_path)
+
+        cash_flow, balance_sheet, income_statement = self.run()
+        print(cash_flow)
+        print(balance_sheet)
+        print(income_statement)
+        input("")
+        self.save_data()
