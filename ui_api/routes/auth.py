@@ -6,7 +6,7 @@ from fastapi import status
 from fastapi.responses import JSONResponse
 
 from database.database import db_connector
-from api.models.auth import UserLogin, UserRegistration
+from ui_api.models.auth import UserLogin, UserRegistration
 from jose import jwt
 from datetime import datetime, timedelta
 import os

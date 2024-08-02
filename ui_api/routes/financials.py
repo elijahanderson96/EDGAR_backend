@@ -6,7 +6,7 @@ from typing import Optional, List
 import logging
 import pandas as pd
 
-from api.models.financials import FinancialRecord
+from ui_api.models.financials import FinancialRecord
 from database.async_database import db_connector
 
 # Initialize logging
