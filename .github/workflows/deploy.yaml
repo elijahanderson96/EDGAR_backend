@@ -28,18 +28,38 @@ jobs:
         sudo apt-get install -y sshpass
         sshpass -V
 
+    - name: Create and verify destination directory on Droplet 1
+      run: |
+        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_1_IP '
+          mkdir -p /root/EDGAR_Backend
+          ls -la /root/EDGAR_Backend
+        '
+
     - name: Pull latest code and build on Droplet 1
       run: |
         sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_1_IP '
-          cd /root/EDGAR_Backend || (git clone $REPO_URL /root/EDGAR_Backend && cd /root/EDGAR_Backend)
-          git pull
-          docker-compose build
+          if [ -d "/root/EDGAR_Backend/.git" ]; then
+            cd /root/EDGAR_Backend && git pull
+          else
+            git clone $REPO_URL /root/EDGAR_Backend
+          fi
+          cd /root/EDGAR_Backend && docker-compose build
+        '
+
+    - name: Create and verify destination directory on Droplet 2
+      run: |
+        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_2_IP '
+          mkdir -p /root/EDGAR_Backend
+          ls -la /root/EDGAR_Backend
         '
 
     - name: Pull latest code and build on Droplet 2
       run: |
         sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_2_IP '
-          cd /root/EDGAR_Backend || (git clone $REPO_URL /root/EDGAR_Backend && cd /root/EDGAR_Backend)
-          git pull
-          docker-compose build
+          if [ -d "/root/EDGAR_Backend/.git" ]; then
+            cd /root/EDGAR_Backend && git pull
+          else
+            git clone $REPO_URL /root/EDGAR_Backend
+          fi
+          cd /root/EDGAR_Backend && docker-compose build
         '
