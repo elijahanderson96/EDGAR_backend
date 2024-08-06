@@ -1,5 +1,4 @@
-from fastapi import APIRouter, Depends, Request, HTTPException
-from typing import Dict
+from fastapi import APIRouter, Request, HTTPException
 
 from database.async_database import db_connector
 from datetime import datetime

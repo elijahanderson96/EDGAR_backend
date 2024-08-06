@@ -1,5 +1,6 @@
 from fastapi import Request, HTTPException
 
+
 async def get_user_id_and_request_type(request: Request) -> (int, bool):
     user_id = getattr(request.state, "user_id", None)
     is_api_key = getattr(request.state, "is_api_key", None)
