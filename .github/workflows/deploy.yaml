@@ -16,6 +16,7 @@ jobs:
       DROPLET_2_IP: ${{ secrets.DROPLET_2_IP }}
       SSH_USERNAME: root
       SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      REPO_URL: https://github.com/elijahanderson96/EDGAR_backend.git
 
     steps:
     - name: Checkout Code
@@ -23,19 +24,22 @@ jobs:
 
     - name: Verify sshpass is installed
       run: |
-        if ! command -v sshpass &> /dev/null; then
-          echo "sshpass could not be found, installing..."
-          sudo apt-get update && sudo apt-get install -y sshpass
-        else
-          echo "sshpass is already installed"
-        fi
+        sudo apt-get update
+        sudo apt-get install -y sshpass
+        sshpass -V
 
-    - name: Copy files and build on Droplet 1
+    - name: Pull latest code and build on Droplet 1
       run: |
-        sshpass -p $SSH_PASSWORD rsync -avz -e "ssh -o StrictHostKeyChecking=no" . $SSH_USERNAME@$DROPLET_1_IP:/root/EDGAR_Backend
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_1_IP 'cd /root/EDGAR_Backend && docker-compose build'
+        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_1_IP '
+          cd /root/EDGAR_Backend || (git clone $REPO_URL /root/EDGAR_Backend && cd /root/EDGAR_Backend)
+          git pull
+          docker-compose build
+        '
 
-    - name: Copy files and build on Droplet 2
+    - name: Pull latest code and build on Droplet 2
       run: |
-        sshpass -p $SSH_PASSWORD rsync -avz -e "ssh -o StrictHostKeyChecking=no" . $SSH_USERNAME@$DROPLET_2_IP:/root/EDGAR_Backend
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_2_IP 'cd /root/EDGAR_Backend && docker-compose build'
+        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_2_IP '
+          cd /root/EDGAR_Backend || (git clone $REPO_URL /root/EDGAR_Backend && cd /root/EDGAR_Backend)
+          git pull
+          docker-compose build
+        '
