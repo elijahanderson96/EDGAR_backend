@@ -21,15 +21,21 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v2
 
-    - name: Install SSHPass
-      run: sudo apt-get install -y sshpass
+    - name: Verify sshpass is installed
+      run: |
+        if ! command -v sshpass &> /dev/null; then
+          echo "sshpass could not be found, installing..."
+          sudo apt-get update && sudo apt-get install -y sshpass
+        else
+          echo "sshpass is already installed"
+        fi
 
-    - name: Copy files to Droplet 1
+    - name: Copy files and build on Droplet 1
       run: |
         sshpass -p $SSH_PASSWORD rsync -avz -e "ssh -o StrictHostKeyChecking=no" . $SSH_USERNAME@$DROPLET_1_IP:/root/EDGAR_Backend
         sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_1_IP 'cd /root/EDGAR_Backend && docker-compose build'
 
-    - name: Copy files to Droplet 2
+    - name: Copy files and build on Droplet 2
       run: |
-        sshpass -p $SSH_PASSWORD rsync -avz -e "ssh -o StrictHostKeyChecking=no" . $SSH_USERNAME@$DROPLET_2_IP:root/EDGAR_Backend
+        sshpass -p $SSH_PASSWORD rsync -avz -e "ssh -o StrictHostKeyChecking=no" . $SSH_USERNAME@$DROPLET_2_IP:/root/EDGAR_Backend
         sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_2_IP 'cd /root/EDGAR_Backend && docker-compose build'
