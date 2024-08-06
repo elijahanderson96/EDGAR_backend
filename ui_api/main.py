@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from jose import jwt, JWTError
 
+from ui_api.routes.account import account_router
 from ui_api.routes.auth import auth_router
 from ui_api.routes.benchmark import benchmark_router
 from ui_api.routes.company_facts import company_facts_router
@@ -59,6 +60,7 @@ class APIKeyJWTMiddleware(BaseHTTPMiddleware):
                 raise HTTPException(status_code=401, detail="Invalid API key")
             request.state.user_id = result.iloc[0]["id"]
             request.state.is_api_key = True
+
         elif auth_header:
             try:
                 token = auth_header.replace("Bearer ", "")
@@ -84,3 +86,4 @@ app.include_router(auth_router)
 app.include_router(company_facts_router)
 app.include_router(benchmark_router)
 app.include_router(financials_router, prefix='/financials')
+app.include_router(account_router)
