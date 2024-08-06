@@ -61,7 +61,8 @@ user_columns = {
     'email': 'VARCHAR(255) UNIQUE NOT NULL',
     'last_logged_in': 'DATE',
     'auth_token': 'VARCHAR(255)',
-    'is_authenticated': 'BOOLEAN'
+    'is_authenticated': 'BOOLEAN',
+    'api_key': 'VARCHAR(255) UNIQUE'
 }
 
 db.create_table('users', columns=user_columns, schema='users')
@@ -117,6 +118,25 @@ db.run_query('''
         data JSON NOT NULL
     );
 ''', return_df=False)
+
+# Assuming db_connector is your database connection instance
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS metadata.api_usage (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users.users(id),
+    billing_period VARCHAR(7) NOT NULL,
+    cash_flow_route_count INT DEFAULT 0 NOT NULL,
+    balance_sheet_route_count INT DEFAULT 0 NOT NULL,
+    income_statement_route_count INT DEFAULT 0 NOT NULL,
+    stock_prices_route_count INT DEFAULT 0 NOT NULL,
+    metadata_route_count INT DEFAULT 0 NOT NULL,
+    UNIQUE(user_id, billing_period)
+    )
+''', return_df=False)
+
+
+db.run_query('CREATE INDEX idx_api_usage_user_id_month_id ON metadata.api_usage(user_id, billing_period);',
+             return_df=False)
 
 # Create indexes for symbols table
 db.run_query('CREATE INDEX IF NOT EXISTS idx_symbols_symbol ON metadata.symbols(symbol);', return_df=False)
@@ -188,6 +208,8 @@ def populate_dates_table():
 
     # Convert list to DataFrame
     df = pd.DataFrame(dates)
+
+    # Assuming db is an instance of your database connection class
     db.insert_dataframe(df, name='dates', schema='metadata', if_exists='append')
 
 
@@ -198,10 +220,23 @@ def populate_symbols_table(symbols):
 
 populate_dates_table()
 populate_symbols_table(symbols=cik_to_symbol_mapping)
+db.run_query('GRANT ALL PRIVILEGES ON DATABASE edgar TO read_only;', return_df=False)
+db.run_query('GRANT ALL PRIVILEGES ON DATABASE edgar TO doadmin;', return_df=False)
 
+db.run_query('ALTER DATABASE edgar OWNER TO read_only;', return_df=False)
 
 # Grant permissions to the user for all schemas and tables
-db.run_query('GRANT USAGE ON SCHEMA users, metadata, financials TO read_only;', return_df=False)
+db.run_query('GRANT USAGE, CREATE ON SCHEMA users, metadata, financials TO doadmin;', return_df=False)
+db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA users TO doadmin;', return_df=False)
+db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA metadata TO doadmin;',
+             return_df=False)
+db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA financials TO doadmin;',
+             return_df=False)
+db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA users TO doadmin;', return_df=False)
+db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA metadata TO doadmin;', return_df=False)
+db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA financials TO doadmin;', return_df=False)
+
+db.run_query('GRANT USAGE, CREATE ON SCHEMA users, metadata, financials TO read_only;', return_df=False)
 db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA users TO read_only;', return_df=False)
 db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA metadata TO read_only;', return_df=False)
 db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA financials TO read_only;', return_df=False)
