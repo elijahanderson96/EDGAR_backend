@@ -31,7 +31,7 @@ class APIKeyJWTMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("Authorization")
 
         if api_key:
-            query = "SELECT id FROM users.users WHERE api_key = %s"
+            query = "SELECT id FROM users.users WHERE api_key = $1"
             result = await db_connector.run_query(query, (api_key,))
             if result.empty:
                 return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid API key"})
