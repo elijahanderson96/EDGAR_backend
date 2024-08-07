@@ -14,7 +14,7 @@ async def get_account_info(request: Request):
     user_id, is_api_key = await get_user_id_and_request_type(request)
 
     query = """
-    SELECT u.username, u.email, COALESCE(au.cash_flow_route_count, 0) AS fundamentals_route_count, 
+    SELECT u.username, u.email, COALESCE(au.cash_flow_route_count, 0) AS cash_flow_route_count, 
            COALESCE(au.balance_sheet_route_count, 0) AS balance_sheet_route_count, 
            COALESCE(au.income_statement_route_count, 0) AS income_statement_route_count, 
            COALESCE(au.stock_prices_route_count, 0) AS stock_prices_route_count, 
