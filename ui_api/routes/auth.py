@@ -1,20 +1,22 @@
 import uuid
 import time
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi.responses import JSONResponse, HTMLResponse
+
 from datetime import datetime, timedelta
 import os
 import bcrypt
 from jose import jwt, JWTError
 
 from database.database import db_connector
+from ui_api.helpers import get_refresh_token_from_cookie
 from ui_api.models.auth import Token, UserLogin, UserRegistration
 from helpers.email_utils import send_authentication_email, is_valid_email
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15
-REFRESH_TOKEN_EXPIRE_DAYS = 3
+ACCESS_TOKEN_EXPIRE_MINUTES = 1
+REFRESH_TOKEN_EXPIRE_DAYS = 1 / 1440  # 1 minute (1 day / 1440 minutes per day)
 
 auth_router = APIRouter()
 
@@ -30,7 +32,10 @@ def add_delay(start_time: float, min_delay: float = 0.5):
 
 
 @auth_router.post("/login", response_model=Token)
-async def login(user_credentials: UserLogin):
+async def login(user_credentials: UserLogin, response: Response):
+    """The response argument in the FastAPI login method is automatically provided by FastAPI when the endpoint is called.
+    FastAPI injects this Response object, allowing you to modify the response, such as setting cookies or headers.
+    This happens behind the scenes and does not require an explicit pass from the React component."""
     username = user_credentials.username
     password = user_credentials.password
 
@@ -41,26 +46,41 @@ async def login(user_credentials: UserLogin):
     if not user:
         # Introduce a deliberate delay
         add_delay(start_time)
-
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
     # Update last_logged_in
     query = "UPDATE users.users SET last_logged_in = %s WHERE username = %s"
     db_connector.run_query(query, (datetime.now(), username), return_df=False)
 
-    # Generate JWT tokens
+    # Generate JWT tokens. We generate refresh_tokens only when a user logs in.
     access_token = create_access_token(user["id"])
     refresh_token = create_refresh_token(user["id"])
 
+    # Set the refresh token as an HTTP-only cookie
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=True, samesite="strict")
+    # setting the refresh token as an HTTP-only cookie is a more secure approach since it prevents JavaScript
+    # from accessing the token, reducing the risk of XSS attacks.
+    # The React component needs to be updated to reflect this change and should not
+    # expect the refresh_token in the response body.
+
     add_delay(start_time)
 
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
-def authenticate_user(username: str, password: str):
-    query = "SELECT * FROM users.users WHERE username = %s"
+def authenticate_user(username: str, password: str) -> dict | None:
+    """
+    Authenticate a user by their username and password.
+
+    Args:
+        username (str): The username of the user attempting to authenticate.
+        password (str): The password of the user attempting to authenticate.
+
+    Returns:
+        dict | None: A dictionary containing the user_id if authentication is successful, otherwise None.
+    """
+    query = "SELECT id, password_hash FROM users.users WHERE username = %s"
     result = db_connector.run_query(query, (username,))
-
     if not result.empty and verify_password(password, result.at[0, "password_hash"]):
         return result.iloc[0].to_dict()  # Convert the user row to a dict
     return None
@@ -125,9 +145,6 @@ async def register(user_registration: UserRegistration):
         content={"message": "Registration successful. Please check your email for the authentication link."})
 
 
-from fastapi.responses import HTMLResponse
-
-
 @auth_router.get("/authenticate/{auth_token}", response_class=HTMLResponse)
 async def authenticate(auth_token: str):
     # Check if the authentication token exists in the database
@@ -167,8 +184,8 @@ async def authenticate(auth_token: str):
     return HTMLResponse(content=html_content)
 
 
-@auth_router.post("/refresh")
-async def refresh_token(refresh_token: str):
+@auth_router.post("/refresh", response_model=Token)
+async def refresh_token(refresh_token: str = Depends(get_refresh_token_from_cookie)):
     try:
         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
@@ -177,10 +194,9 @@ async def refresh_token(refresh_token: str):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    new_access_token = create_access_token(user_id)
-    new_refresh_token = create_refresh_token(user_id)
+    new_access_token = create_access_token({"sub": user_id})
 
-    return {"access_token": new_access_token, "refresh_token": new_refresh_token, "token_type": "bearer"}
+    return {"access_token": new_access_token, "token_type": "bearer"}
 
 
 # Middleware to protect routes
