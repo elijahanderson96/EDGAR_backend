@@ -11,7 +11,6 @@ from ui_api.routes.financials import financials_router
 from database.async_database import db_connector
 
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 
 from fastapi import Request, status
@@ -33,7 +32,7 @@ class APIKeyJWTMiddleware(BaseHTTPMiddleware):
 
         if api_key:
             query = "SELECT id FROM users.users WHERE api_key = %s"
-            result = db_connector.run_query(query, (api_key,))
+            result = await db_connector.run_query(query, (api_key,))
             if result.empty:
                 return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid API key"})
             request.state.user_id = result.iloc[0]["id"]
