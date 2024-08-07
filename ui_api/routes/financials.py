@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 financials_router = APIRouter()
 
 
-async def update_api_usage_count(user_id: int, route: str):
+async def update_api_usage_count(user_id: int, route: str, record_count: int):
     current_date = datetime.utcnow()
     billing_period = current_date.strftime('%m-%Y')
 
@@ -43,7 +43,7 @@ async def update_api_usage_count(user_id: int, route: str):
         record_id = result.iloc[0]['id']
         query_update = f"""
         UPDATE metadata.api_usage
-        SET {route_column} = {route_column} + 1
+        SET {route_column} = {route_column} + {record_count}
         WHERE id = {record_id}
         """
         await db_connector.run_query(query_update, return_df=False)
@@ -51,9 +51,11 @@ async def update_api_usage_count(user_id: int, route: str):
         # Record does not exist, insert a new record
         query_insert = f"""
         INSERT INTO metadata.api_usage (user_id, billing_period, {route_column})
-        VALUES ({user_id}, '{billing_period}', 1)
+        VALUES ({user_id}, '{billing_period}', {record_count})
         """
         await db_connector.run_query(query_insert, return_df=False)
+
+
 
 
 async def get_user_id_by_username(username: str) -> int:
@@ -115,8 +117,9 @@ async def get_cash_flow(
 ):
     user_id, is_api_key = await get_user_id_and_request_type(request)
     data = await fetch_financial_data("cash_flow", symbol, report_date, filing_date, latest_n_records)
+    record_count = len(data)
     if is_api_key:
-        await update_api_usage_count(user_id, "cash_flow")
+        await update_api_usage_count(user_id, "cash_flow", record_count)
     return data
 
 
@@ -130,8 +133,9 @@ async def get_balance_sheet(
 ):
     user_id, is_api_key = await get_user_id_and_request_type(request)
     data = await fetch_financial_data("balance_sheet", symbol, report_date, filing_date, latest_n_records)
+    record_count = len(data)
     if is_api_key:
-        await update_api_usage_count(user_id, "balance_sheet")
+        await update_api_usage_count(user_id, "balance_sheet", record_count)
     return data
 
 
@@ -145,6 +149,7 @@ async def get_income(
 ):
     user_id, is_api_key = await get_user_id_and_request_type(request)
     data = await fetch_financial_data("income", symbol, report_date, filing_date, latest_n_records)
+    record_count = len(data)
     if is_api_key:
-        await update_api_usage_count(user_id, "income")
+        await update_api_usage_count(user_id, "income", record_count)
     return data
