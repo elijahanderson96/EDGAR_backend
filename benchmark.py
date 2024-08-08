@@ -1,49 +1,28 @@
-import requests
+import subprocess
 import time
-import concurrent.futures
 
+# Define the cURL command
+curl_command = (
+    'curl -s -o /dev/null -X GET "http://localhost:8000/metadata/details?symbol=AAPL&start_date=2023-01-01&end_date=2023-12-31" '
+    '-H "X-API-KEY: 929ad1fa-57de-46f8-a3c7-7b45c3899605"'
+)
 
-def fetch_old_db_benchmark(url):
-    start_time = time.time()
-    response = requests.get(url)
-    duration = time.time() - start_time
-    return response.json(), duration
+# Number of requests to make
+num_requests = 1000
 
+# Track the start time
+start_time = time.time()
 
-def fetch_new_db_benchmark(url):
-    start_time = time.time()
-    response = requests.get(url)
-    duration = time.time() - start_time
-    return response.json(), duration
+# Loop to execute the cURL command multiple times
+for i in range(num_requests):
+    # Execute the cURL command
+    subprocess.run(curl_command, shell=True)
 
+    # Print progress every 1000 requests
+    if (i + 1) % 100 == 0:
+        print(f"{i + 1} requests completed")
 
-def main():
-    old_db_url = "http://127.0.0.1:8000/old_db/benchmark"
-    new_db_url = "http://127.0.0.1:8000/new_db/benchmark"
-    num_requests = 100  # Adjust the number of requests as needed
-
-    old_db_durations = []
-    new_db_durations = []
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        # Old DB Benchmark
-        old_db_futures = [executor.submit(fetch_old_db_benchmark, old_db_url) for _ in range(num_requests)]
-        for future in concurrent.futures.as_completed(old_db_futures):
-            response, duration = future.result()
-            old_db_durations.append(duration)
-
-        # New DB Benchmark
-        new_db_futures = [executor.submit(fetch_new_db_benchmark, new_db_url) for _ in range(num_requests)]
-        for future in concurrent.futures.as_completed(new_db_futures):
-            response, duration = future.result()
-            new_db_durations.append(duration)
-
-    avg_old_db_duration = sum(old_db_durations) / len(old_db_durations)
-    avg_new_db_duration = sum(new_db_durations) / len(new_db_durations)
-
-    print(f"Average duration for old DB benchmark: {avg_old_db_duration} seconds")
-    print(f"Average duration for new DB benchmark: {avg_new_db_duration} seconds")
-
-
-if __name__ == "__main__":
-    main()
+# Calculate and print the total time taken
+end_time = time.time()
+total_time = end_time - start_time
+print(f"Completed {num_requests} requests in {total_time:.2f} seconds")
