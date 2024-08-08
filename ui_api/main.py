@@ -17,6 +17,8 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from jose import JWTError, ExpiredSignatureError
 
+from ui_api.routes.metadata import metadata_router
+
 app = FastAPI()
 
 
@@ -95,3 +97,4 @@ app.include_router(company_facts_router)
 app.include_router(benchmark_router)
 app.include_router(financials_router, prefix='/financials')
 app.include_router(account_router)
+app.include_router(metadata_router)
