@@ -5,8 +5,6 @@ from jose import jwt
 
 from ui_api.routes.account import account_router
 from ui_api.routes.auth import auth_router
-from ui_api.routes.benchmark import benchmark_router
-from ui_api.routes.company_facts import company_facts_router
 from ui_api.routes.financials import financials_router
 from database.async_database import db_connector
 
@@ -25,6 +23,10 @@ app = FastAPI()
 class APIKeyJWTMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         excluded_paths = ["/login", "/register", "/authenticate", "/docs"]
+
+        # Skip logging for the /docs endpoint
+        if request.url.path == "/docs":
+            return await call_next(request)
 
         if request.method == "OPTIONS" or request.url.path in excluded_paths:
             return await call_next(request)
@@ -93,8 +95,6 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 
 app.include_router(auth_router)
-app.include_router(company_facts_router)
-app.include_router(benchmark_router)
 app.include_router(financials_router, prefix='/financials')
 app.include_router(account_router)
 app.include_router(metadata_router)

@@ -16,7 +16,7 @@ from helpers.email_utils import send_authentication_email, is_valid_email
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
-REFRESH_TOKEN_EXPIRE_DAYS = 1   # 1 minute (1 day / 1440 minutes per day)
+REFRESH_TOKEN_EXPIRE_DAYS = 1  # 1 minute (1 day / 1440 minutes per day)
 
 auth_router = APIRouter()
 
