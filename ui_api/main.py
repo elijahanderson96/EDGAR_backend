@@ -1,4 +1,5 @@
 import os
+import logging
 
 from fastapi import FastAPI
 from jose import jwt
@@ -18,6 +19,15 @@ from jose import JWTError, ExpiredSignatureError
 from ui_api.routes.metadata import metadata_router
 
 app = FastAPI()
+
+
+class DocsFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Filter out logs that contain /docs
+        return "/docs" not in record.getMessage()
+
+
+logging.getLogger("uvicorn.access").addFilter(DocsFilter())
 
 
 class APIKeyJWTMiddleware(BaseHTTPMiddleware):
