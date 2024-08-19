@@ -9,4 +9,5 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+      - /etc/letsencrypt/live/api.equityexplorer.io:/etc/letsencrypt/live/api.equityexplorer.io:ro
     network_mode: "bridge"
