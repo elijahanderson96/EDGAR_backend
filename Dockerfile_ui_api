@@ -12,6 +12,10 @@ COPY ui_api /app/ui_api
 COPY *.py /app/
 COPY requirements.txt /app/requirements.txt
 
+# Copy SSL certificates
+COPY /etc/letsencrypt/live/api.equityexplorer.io/fullchain.pem /etc/letsencrypt/live/api.equityexplorer.io/
+COPY /etc/letsencrypt/live/api.equityexplorer.io/privkey.pem /etc/letsencrypt/live/api.equityexplorer.io/
+
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 CMD ["uvicorn", "ui_api.main:app", "--host", "0.0.0.0", "--port", "443", "--ssl-certfile", "/etc/letsencrypt/live/api.equityexplorer.io/fullchain.pem", "--ssl-keyfile", "/etc/letsencrypt/live/api.equityexplorer.io/privkey.pem"]
