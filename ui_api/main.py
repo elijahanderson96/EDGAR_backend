@@ -80,7 +80,8 @@ class APIKeyJWTMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/docs":
             return await call_next(request)
 
-        if request.method == "OPTIONS" or request.url.path in excluded_paths:
+        if request.method == "OPTIONS" or request.url.path in excluded_paths or request.url.path.startswith(
+                'authenticate'):
             return await call_next(request)
 
         api_key = request.headers.get("X-API-Key")
