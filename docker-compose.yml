@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile_ui_api
     ports:
-      - "8000:8000"
+      - "443:443"
     volumes:
       - .:/app
       - /etc/letsencrypt/live/api.equityexplorer.io:/etc/letsencrypt/live/api.equityexplorer.io:ro
