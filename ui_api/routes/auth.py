@@ -1,3 +1,4 @@
+import logging
 import uuid
 import time
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
@@ -13,12 +14,13 @@ from ui_api.helpers import get_refresh_token_from_cookie
 from ui_api.models.auth import Token, UserLogin, UserRegistration
 from helpers.email_utils import send_authentication_email, is_valid_email
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+SECRET_KEY = os.getenv("JWT_SECRET_ACCESS_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15
+ACCESS_TOKEN_EXPIRE_MINUTES = 1
 REFRESH_TOKEN_EXPIRE_DAYS = 1  # 1 minute (1 day / 1440 minutes per day)
 
 auth_router = APIRouter()
+
 
 
 def add_delay(start_time: float, min_delay: float = 0.5):
@@ -38,7 +40,6 @@ async def login(user_credentials: UserLogin, response: Response):
     This happens behind the scenes and does not require an explicit pass from the React component."""
     username = user_credentials.username
     password = user_credentials.password
-
     start_time = time.monotonic()
 
     # Authenticate user
@@ -57,7 +58,7 @@ async def login(user_credentials: UserLogin, response: Response):
     refresh_token = create_refresh_token(user["id"])
 
     # Set the refresh token as an HTTP-only cookie
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=True, samesite="strict")
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, samesite="strict")
     # setting the refresh token as an HTTP-only cookie is a more secure approach since it prevents JavaScript
     # from accessing the token, reducing the risk of XSS attacks.
     # The React component needs to be updated to reflect this change and should not
@@ -187,15 +188,23 @@ async def authenticate(auth_token: str):
 @auth_router.post("/refresh", response_model=Token)
 async def refresh_token(refresh_token: str = Depends(get_refresh_token_from_cookie)):
     try:
+        print("Attempting to decode refresh token.")
         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        print("Token decoded successfully.")
+
         user_id: str = payload.get("sub")
         if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+            print("Invalid refresh token: user_id is None.")
+            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "User ID is none"})
+        print(f"Refresh token is valid for user_id: {user_id}.")
 
-    new_access_token = create_access_token({"sub": user_id})
+    except JWTError as e:
+        print(f"JWTError: {str(e)}")
+        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid Refresh Token"})
 
+    new_access_token = create_access_token(user_id)
+    print(f"New access token created for user_id: {user_id}.")
+    print(new_access_token)
     return {"access_token": new_access_token, "token_type": "bearer"}
 
 

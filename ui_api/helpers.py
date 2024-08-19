@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from fastapi import Request, HTTPException
+from fastapi import Request, HTTPException, status
+from starlette.responses import JSONResponse
 
 from database.async_database import db_connector
 
@@ -15,8 +16,11 @@ async def get_user_id_and_request_type(request: Request) -> (int, bool):
 
 def get_refresh_token_from_cookie(request: Request):
     refresh_token = request.cookies.get("refresh_token")
+    print(refresh_token)
+    print(request.cookies)
     if not refresh_token:
-        raise HTTPException(status_code=401, detail="Refresh token missing")
+        print('Refresh token not found.')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired or missing")
     return refresh_token
 
 

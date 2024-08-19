@@ -1,5 +1,6 @@
 import os
 import logging
+import sys
 
 from fastapi import FastAPI
 from jose import jwt
@@ -27,12 +28,53 @@ class DocsFilter(logging.Filter):
         return "/docs" not in record.getMessage()
 
 
+# remove these lines to show the health check if you want to ensure the load balancer is
+# properly communicating with the server.
 logging.getLogger("uvicorn.access").addFilter(DocsFilter())
+
+# Define custom logging configuration
+logging_config = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "format": "%(asctime)s - %(levelname)s - %(message)s",
+        },
+    },
+    "handlers": {
+        "default": {
+            "formatter": "default",
+            "class": "logging.StreamHandler",
+            "stream": sys.stdout,
+        },
+    },
+    "loggers": {
+        "uvicorn": {
+            "handlers": ["default"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "uvicorn.error": {
+            "handlers": ["default"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "uvicorn.access": {
+            "handlers": ["default"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
+
+# Apply logging configuration
+logging.config.dictConfig(logging_config)
 
 
 class APIKeyJWTMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        excluded_paths = ["/login", "/register", "/authenticate", "/docs"]
+        # auth routes are excluded so users can obtain access/refresh tokens.
+        excluded_paths = ["/login", "/register", "/authenticate", "/docs", "/refresh"]
 
         # Skip logging for the /docs endpoint
         if request.url.path == "/docs":
