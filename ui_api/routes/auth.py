@@ -14,7 +14,7 @@ from ui_api.helpers import get_refresh_token_from_cookie
 from ui_api.models.auth import Token, UserLogin, UserRegistration
 from helpers.email_utils import send_authentication_email, is_valid_email
 
-SECRET_KEY = os.getenv("JWT_SECRET_ACCESS_KEY")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1
 REFRESH_TOKEN_EXPIRE_DAYS = 1  # 1 minute (1 day / 1440 minutes per day)
