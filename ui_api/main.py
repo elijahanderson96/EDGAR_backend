@@ -74,7 +74,7 @@ logging.config.dictConfig(logging_config)
 class APIKeyJWTMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # auth routes are excluded so users can obtain access/refresh tokens.
-        excluded_paths = ["/login", "/register", "/authenticate", "/docs", "/refresh"]
+        excluded_paths = ["/login", "/register", "/authenticate", "/docs", "/refresh", "/authenticate/{auth_token}"]
 
         # Skip logging for the /docs endpoint
         if request.url.path == "/docs":
