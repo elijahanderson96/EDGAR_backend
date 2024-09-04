@@ -86,38 +86,42 @@ db.run_query('''
     );
 ''', return_df=False)
 
-# Create balance_sheet table in financials schema
+# -- Create balance_sheet table with unique constraint
 db.run_query('''
     CREATE TABLE IF NOT EXISTS financials.balance_sheet (
         id SERIAL PRIMARY KEY,
         symbol_id INT REFERENCES metadata.symbols(symbol_id),
         report_date_id INT REFERENCES metadata.dates(date_id),
         filing_date_id INT REFERENCES metadata.dates(date_id),
-        data JSON NOT NULL
+        data JSON NOT NULL,
+        CONSTRAINT unique_balance_sheet UNIQUE(symbol_id, report_date_id, filing_date_id)
     );
 ''', return_df=False)
 
-# Create cash_flow table in financials schema
+# -- Create cash_flow table with unique constraint
 db.run_query('''
     CREATE TABLE IF NOT EXISTS financials.cash_flow (
         id SERIAL PRIMARY KEY,
         symbol_id INT REFERENCES metadata.symbols(symbol_id),
         report_date_id INT REFERENCES metadata.dates(date_id),
         filing_date_id INT REFERENCES metadata.dates(date_id),
-        data JSON NOT NULL
+        data JSON NOT NULL,
+        CONSTRAINT unique_cash_flow UNIQUE(symbol_id, report_date_id, filing_date_id)
     );
 ''', return_df=False)
 
-# Create income table in financials schema
+# -- Create income table with unique constraint
 db.run_query('''
     CREATE TABLE IF NOT EXISTS financials.income (
         id SERIAL PRIMARY KEY,
         symbol_id INT REFERENCES metadata.symbols(symbol_id),
         report_date_id INT REFERENCES metadata.dates(date_id),
         filing_date_id INT REFERENCES metadata.dates(date_id),
-        data JSON NOT NULL
+        data JSON NOT NULL,
+        CONSTRAINT unique_income UNIQUE(symbol_id, report_date_id, filing_date_id)
     );
 ''', return_df=False)
+
 
 # Assuming db_connector is your database connection instance
 db.run_query('''

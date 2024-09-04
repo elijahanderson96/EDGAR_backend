@@ -3,11 +3,9 @@ import os
 import sys
 import uuid
 from pdf2image import convert_from_path
-# from transformers import TableTransformerForObjectDetection, DetrFeatureExtractor
 import pdfkit
 import logging
 import torch
-
 
 # Configure logging
 logging.getLogger().setLevel(logging.INFO)
@@ -15,10 +13,6 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 
 config = pdfkit.configuration(
     wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')  # r'/usr/local/bin/wkhtmltopdf')
-
-
-# model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
-# feature_extractor = DetrFeatureExtractor.from_pretrained("microsoft/table-transformer-detection")
 
 
 def convert_html_to_pdf(html_file, pdf_file):
@@ -66,45 +60,6 @@ def convert_html_to_pdf(html_file, pdf_file):
     return output_html_file
 
 
-def preprocess_pdf(pdf_file):
-    logging.info(f"Preprocessing PDF file '{pdf_file}'")
-    # Perform any necessary preprocessing on the PDF file
-    pass
-
-
-def detect_tables(image, model, feature_extractor, padding=500):
-    logging.info("Detecting tables in the image")
-    # Preprocess the image
-    encoding = feature_extractor(image, return_tensors="pt")
-
-    # Use the TableTransformer model to detect tables in the image
-    with torch.no_grad():
-        outputs = model(**encoding)
-
-    # Process the model outputs to get the bounding boxes of the detected tables
-    width, height = image.size
-    results = feature_extractor.post_process_object_detection(outputs, threshold=0.1, target_sizes=[(height, width)])[0]
-
-    # Convert the tensor values to plain Python values
-    boxes = [box.tolist() for box in results['boxes']]
-    scores = results['scores'].tolist()
-
-    # Add padding to the bounding boxes
-    padded_boxes = []
-    for box in boxes:
-        x1, y1, x2, y2 = box
-        x1 = max(0, x1 - padding)
-        y1 = max(0, y1 - padding)
-        x2 = min(width, x2 + padding)
-        y2 = min(height, y2 + padding)
-        padded_boxes.append([x1, y1, x2, y2])
-
-    logging.info(f"Detected {len(padded_boxes)} tables in the image")
-    logging.info(f"The scores of these tables are {scores}")
-
-    return padded_boxes
-
-
 def process_document(html_file, output_dir):
     logging.info(f"Processing document: {html_file}")
 
@@ -136,17 +91,6 @@ def process_document(html_file, output_dir):
             break
 
         logging.info(f"Processing page {i + 1}/{len(images)}")
-        #
-        # # Detect tables in the image
-        # table_boxes = detect_tables(image, model, feature_extractor)
-        #
-        # # Visualize the first detected table only and save the screenshot
-        # if table_boxes:
-        #     box = table_boxes[0]
-        #     table_image = image.crop(box)
-        #     output_path = os.path.join(output_dir, f"{report_name}_table_page{i + 1}.png")
-        #     image.save(output_path)
-        #     logging.info(f"Saved table screenshot: {output_path}")
 
     # Clean up temporary files
     logging.info(f"Removing temporary PDF file '{pdf_file}'")
@@ -159,7 +103,7 @@ def process_document(html_file, output_dir):
 def main(symbol):
     logging.info("Starting table extraction process")
 
-    filings_dir = os.path.join("latest_quarterly_reports", 'sec-edgar-filings', symbol)
+    filings_dir = os.path.join('sec-edgar-filings', symbol)
 
     # Traverse the symbol directory and find primary documents
     for root, dirs, files in os.walk(filings_dir):

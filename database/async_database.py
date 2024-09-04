@@ -2,20 +2,33 @@ import asyncpg
 import pandas as pd
 from typing import Union, Dict, Optional, Any
 import logging
-from config.configs import dsn  # Ensure this now points to the DigitalOcean connection pool
+from config.configs import dsn  # Ensure this now points to the correct DSN
 
 
 class AsyncpgConnector:
-    def __init__(self, dsn: str):
+    def __init__(self, dsn: str, min_size: int = 3, max_size: int = 5):
         self.dsn = dsn
+        self.min_size = min_size
+        self.max_size = max_size
         self.logger = logging.getLogger(__name__)
+        self.pool = None
 
     async def initialize(self):
-        # No local pool creation; assume the DSN points to the DigitalOcean connection pool
-        self.connection = await asyncpg.connect(dsn=self.dsn)
+        """Initialize the connection pool."""
+        try:
+            self.pool = await asyncpg.create_pool(
+                dsn=self.dsn,
+                min_size=self.min_size,
+                max_size=self.max_size
+            )
+        except Exception as e:
+            self.logger.error(f"Error occurred while creating connection pool: {e}")
+            raise e
 
     async def close(self):
-        await self.connection.close()
+        """Close the connection pool."""
+        if self.pool:
+            await self.pool.close()
 
     async def run_query(
             self,
@@ -40,20 +53,21 @@ class AsyncpgConnector:
             the query retrieves data. Otherwise, None is returned. If fetch_one is True, returns a single value from the query
             result.
         """
-        try:
-            if fetch_one:
-                result = await self.connection.fetchrow(query, *params) if params else await self.connection.fetch(
-                    query)
-                return result[0] if result else None
-            else:
-                result = await self.connection.fetch(query, *params) if params else await self.connection.fetch(query)
-                if return_df:
-                    data = [dict(record) for record in result]
-                    return pd.DataFrame(data)
-                return None
-        except Exception as e:
-            self.logger.error(f"Error occurred while executing query: {e}")
-            raise e
+        async with self.pool.acquire() as connection:
+            try:
+                if fetch_one:
+                    result = await connection.fetchrow(query, *params) if params else await connection.fetch(query)
+                    return result[0] if result else None
+                else:
+                    result = await connection.fetch(query, *params) if params else await connection.fetch(query)
+                    if return_df:
+                        data = [dict(record) for record in result]
+                        return pd.DataFrame(data)
+                    return None
+            except Exception as e:
+                self.logger.error(f"Error occurred while executing query: {e}")
+                raise e
 
 
+# Usage
 db_connector = AsyncpgConnector(dsn=dsn)

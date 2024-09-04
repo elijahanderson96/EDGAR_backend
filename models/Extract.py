@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 from statistics import median
 
 import cv2
@@ -14,29 +13,14 @@ from typing import Dict, List
 import re
 from dateutil import parser
 
-from database.database import db_connector
-
-# Add the parent directory to the sys.path to locate the edgar module
-#script_dir = os.path.dirname(os.path.abspath(__file__))
-#root_dir = os.path.abspath(os.path.join(script_dir, os.pardir))
-#sys.path.append(root_dir)
+from database.async_database import db_connector
+from database.helpers import get_date_id, get_symbol_id
+from helpers.email_utils import send_validation_email
 
 
 class Extract:
-    """
-    Extract class for extracting information from a data table in an image using YOLOv8 and EasyOCR.
-
-    """
-
     def __init__(self, symbol, filings_dir, model_path):
-        """
-        Initializes the DataTableExtractor with the given model and image paths.
-
-        Args:
-            symbol (str): The name of the stock symbol.
-            model_path (str): Path to the YOLOv8 model.
-
-        """
+        self.aggregated_data = []
         self.symbol = symbol
         self.model_path = model_path
         self.filings_dir = filings_dir
@@ -298,8 +282,6 @@ class Extract:
 
         self.class_text_mapping['Unit'].append(units)
 
-    from statistics import median
-
     def handle_data(self, ocr_result):
         """
         Handles data by parsing the OCR results into key-value pairs.
@@ -307,120 +289,182 @@ class Extract:
         Args:
             ocr_result: OCR results from EasyOCR.
         """
-        # Collect all text into a list
+        # Collect all text into a list from all the different data bounding boxes
         all_texts = []
-        for (bbox, text, prob) in ocr_result:
-            text = text.replace('$', '').replace(',', '').strip()
-            if text and text != 'S':
-                all_texts.append(text)
+        [all_texts.append(text) for bbox, text, prob in ocr_result if text and text not in ('S', '$')]
 
-        # Parse the list to create key-value pairs
-        parsed_data = {}
+        # aggregate the data into a list for each table type (balance sheet, income, cash flow).
+        self.aggregated_data.extend(all_texts)
+
+    @staticmethod
+    def clean_value(item):
+        """
+        Clean and convert values, stripping parentheses and converting to negative if needed.
+        Args:
+            item (str): The string to clean and convert.
+
+        Returns:
+            float or str: The cleaned and converted value or the original string if it's not a number.
+        """
+        item = item.strip()  # Remove leading and trailing spaces
+        # Remove any enclosing parentheses and determine if it should be negative
+        if item.startswith('(') and item.endswith(')'):
+            return -float(item.strip('()').replace(',', '')) \
+                if re.match(r'^-?\d+(\.\d+)?$', item.strip('()').replace(',', '')) else item.strip('()')
+        elif item.endswith(')'):
+            return -float(item.strip(')').replace(',', '')) \
+                if re.match(r'^-?\d+(\.\d+)?$', item.strip(')').replace(',', '')) else item.strip(')')
+        elif item.startswith('('):
+            return float(item.strip('(').replace(',', '')) \
+                if re.match(r'^-?\d+(\.\d+)?$', item.strip('(').replace(',', '')) else item.strip('(')
+        return float(item.replace(',', '')) if re.match(r'^-?\d+(\.\d+)?$', item.replace(',', '')) else item
+
+    def parse_financial_data(self, input_list):
+        """
+        Parses financial data from a list into a dictionary with keys and associated numerical values.
+
+        Args:
+            input_list (list): The list containing financial data.
+
+        Returns:
+            dict: The parsed financial data as a dictionary.
+        """
+        financial_data = {}
         current_key = None
+        values = []
 
-        for text in all_texts:
-            # Check if the text is a numerical value
-            if re.match(r'^-?\d+(\.\d+)?$', text):
-                if current_key:
-                    if current_key not in parsed_data:
-                        parsed_data[current_key] = []
-                    parsed_data[current_key].append(text)
-            else:  # The text is a key
-                current_key = text
+        for item in input_list:
+            cleaned_item = self.clean_value(item)
 
-        # Calculate the median length of all arrays in parsed_data
-        lengths = [len(value) for value in parsed_data.values()]
-        if lengths:
-            median_length = int(median(lengths))
+            # If it's a number, it should be part of the values for the current key
+            if isinstance(cleaned_item, (int, float)):
+                values.append(cleaned_item)
+            else:
+                # If we have a current key and values, store them in the dictionary
+                if current_key and values:
+                    financial_data[current_key] = values
+                    values = []
 
-            # Truncate each array to the median length
-            for key in parsed_data.keys():
-                parsed_data[key] = parsed_data[key][:median_length]
+                # Update current key
+                current_key = cleaned_item
 
-        self.class_text_mapping['Data'].append(parsed_data) if parsed_data else None
+        # After loop, ensure the last key and values are added to the dictionary
+        if current_key and values:
+            financial_data[current_key] = values
 
-    @staticmethod
-    def create_dataframe(class_text_mapping):
-        data_entries = class_text_mapping['Data']
-        column_titles = class_text_mapping['Column Title']
+        return financial_data
 
-        # if not data_entries or not column_titles:
-        #     raise ValueError("Data entries or Column Titles are missing")
+    def _extract_data_for_category(self, category):
+        """
+        Generic method to extract data for a given category (cash flow, balance sheet, or income).
 
-        lengths = [len(value) for entry in data_entries for value in entry.values()]
+        Args:
+            category (str): The category of data to extract (e.g., 'cash_flow', 'balance_sheet', 'income').
 
-        median_length = int(median(lengths))
+        Returns:
+            pd.DataFrame or None: The extracted data as a DataFrame or None if no data found.
+        """
+        self.aggregated_data = []
 
-        # Sometimes a report will only have 1 of 2 or 1 of 4 columns populated with data. We are going to ignore t
-        # these entries for simplicity for now. Perhaps in the future we can find a reliable means to parse them
-        # into the frame, but for now, we're omitting.
-        filtered_entries = {key: value for entry in data_entries for key, value in entry.items() if
-                            len(value) == median_length}
+        image_list = self.image_paths.get(category, [])
+        if not image_list:
+            return None
 
-        # expected_num_columns = len(next(iter(data_entries[0].values())))
+        for image_path in image_list:
+            inference_results = self.perform_inference(image_path)
+            text_mapping = self.extract_text_from_bounding_boxes(inference_results, image_path)
 
-        # if len(column_titles) != expected_num_columns:
-        #     raise ValueError(
-        #         f"Length mismatch: Expected {expected_num_columns} column titles, got {len(column_titles)}")
+            # Flatten the extracted data into a single list
+            self.aggregated_data.extend(text_mapping['Data'])
 
-        return pd.DataFrame(filtered_entries,
-                            index=column_titles if len(column_titles) == median_length else [str(i) for i in
-                                                                                             range(median_length)]).T
+        # After processing all images, parse the aggregated data
+        parsed_data = self.parse_financial_data(self.aggregated_data)
 
-    def run(self):
-        results = {}
+        # Apply filtering logic based on the median length of values
+        if parsed_data:
+            # Calculate the lengths of the values
+            lengths = [len(v) for v in parsed_data.values() if isinstance(v, list)]
+            median_length = int(median(lengths)) if lengths else 0
 
-        for category, image_list in self.image_paths.items():
-            # Initialize a combined text mapping for the category
-            combined_text_mapping = {class_name: [] for class_name in self.class_names}
+            # Filter entries where the length of the value matches the median length
+            filtered_data = {k: v for k, v in parsed_data.items() if isinstance(v, list) and len(v) == median_length}
 
-            for image_path in image_list:
-                inference_results = self.perform_inference(image_path)
-                text_mapping = self.extract_text_from_bounding_boxes(inference_results, image_path)
+            # Convert filtered data to DataFrame if there are valid entries
+            if filtered_data:
+                category_dataframe = pd.DataFrame.from_dict(filtered_data, orient='index').T
 
-                # Append values to the combined text mapping
-                for class_name in self.class_names:
-                    combined_text_mapping[class_name].extend(text_mapping[class_name])
+                financial_unit = self.class_text_mapping['Unit'][0].get('financial_unit', 1)
+                share_unit = self.class_text_mapping['Unit'][0].get('share_unit', 1)
 
-            # Create a dataframe for the category
+                column_titles = self._generate_column_titles()
 
-            category_dataframe = self.create_dataframe(combined_text_mapping)
+                print(column_titles)
 
-            # Store the dataframe in the results dictionary
-            results[category] = category_dataframe
+                # Set column titles (which are now the index names)
+                if len(column_titles) == category_dataframe.shape[0]:
+                    category_dataframe.index = column_titles
 
-        self.cash_flow = results.get('cash_flow')
-        self.balance_sheet = results.get('balance_sheet')
-        self.income_statement = results.get('income')
+                # Apply financial and share units to the DataFrame
+                # If the column contains "basic", "diluted", or "share", apply share_unit instead of financial_unit
+                excluded_keywords = ["basic", "diluted", "share"]
 
-        return self.cash_flow, self.balance_sheet, self.income_statement
+                def apply_units(val, col_title):
+                    if any(keyword in col_title.lower() for keyword in excluded_keywords):
+                        return val * share_unit if isinstance(val, (int, float)) else val
+                    return val * financial_unit if isinstance(val, (int, float)) else val
 
-    @staticmethod
-    def get_symbol_id(symbol):
-        query = 'SELECT symbol_id FROM metadata.symbols WHERE symbol = %s'
-        result = db_connector.run_query(query, (symbol,), fetch_one=True)
-        if result:
-            return result
+                # Apply units to all values in the DataFrame based on column names
+                for col in category_dataframe.columns:
+                    category_dataframe[col] = category_dataframe[col].apply(lambda val: apply_units(val, col))
+
+                return category_dataframe
+
+        return None
+
+    def _generate_column_titles(self):
+        """
+        Generates column titles by combining 'Column Group Title' and 'Column Title'.
+        Distributes the column titles evenly across the available group titles.
+
+        Returns:
+            List[str]: The generated column titles.
+        """
+        column_titles = self.class_text_mapping['Column Title']
+        group_titles = self.class_text_mapping['Column Group Title']
+
+        if group_titles:
+            # Determine the chunk size for each group title
+            chunk_size = len(column_titles) // len(group_titles)
+            combined_titles = []
+
+            # Append group title to corresponding column titles
+            for i, group_title in enumerate(group_titles):
+                start_idx = i * chunk_size
+                end_idx = (i + 1) * chunk_size
+                combined_titles.extend([f"{group_title} {col_title}" for col_title in column_titles[start_idx:end_idx]])
+
+            return combined_titles
         else:
-            raise ValueError(f"Symbol {symbol} not found in metadata.symbols table.")
+            # Use column titles only if no group titles are present
+            return column_titles
 
-    @staticmethod
-    def get_date_id(date):
-        query = 'SELECT date_id FROM metadata.dates WHERE date = %s'
-        result = db_connector.run_query(query, (date,), fetch_one=True)
-        if result:
-            return result
-        else:
-            raise ValueError(f"Date {date} not found in metadata.dates table.")
+    def extract_cash_flow(self):
+        return self._extract_data_for_category('cash_flow')
 
-    def save_data(self):
+    def extract_balance_sheet(self):
+        return self._extract_data_for_category('balance_sheet')
+
+    def extract_income_statement(self):
+        return self._extract_data_for_category('income')
+
+    def save_data(self, validate=False):
         """
         Save the dataframes for cash_flow, balance_sheet, and income_statement to the database
-        with the appropriate date and symbol fields.
+        with the appropriate date and symbol fields. If validate is True, it sends an email for
+        validation instead of directly saving to the database.
         """
-        symbol_id = self.get_symbol_id(self.symbol)
-        report_date_id = self.get_date_id(self.report_date)
-        filing_date_id = self.get_date_id(self.filed_as_of_date)
+        symbol_id = get_symbol_id(self.symbol)
+        report_date_id, filing_date_id = get_date_id(self.report_date), get_date_id(self.filed_as_of_date)
 
         tables = {
             'cash_flow': self.cash_flow,
@@ -428,67 +472,85 @@ class Extract:
             'income': self.income_statement
         }
 
+        dataframes_to_validate = {}
+
         for table_name, dataframe in tables.items():
             if dataframe is not None and not dataframe.empty:
-                dataframe = dataframe.T.reset_index()
-                # Collapse dataframe to JSON-like dictionary
-                data_json = dataframe.to_dict(orient='records')
+                if validate:
+                    # Add report_date and filed_as_of_date as columns to the DataFrame for validation
+                    dataframe['report_date_id'] = report_date_id
+                    dataframe['filed_as_of_date_id'] = filing_date_id
+                    dataframe['symbol_id'] = symbol_id
 
-                # Prepare the record for insertion
-                record = {
-                    'symbol_id': symbol_id,
-                    'report_date_id': report_date_id,
-                    'filing_date_id': filing_date_id,
-                    'data': json.dumps(data_json)  # Convert the data to a JSON string
-                }
+                    # Transpose and reset index to make the DataFrame ready for validation
+                    dataframe = dataframe.T.reset_index()
+                    dataframes_to_validate[table_name] = dataframe
+                else:
+                    # For direct DB insertion, prepare the dataframe for insertion without adding extra columns
+                    dataframe = dataframe.T.reset_index()
 
-                # Insert the record into the appropriate financial table
-                insert_query = f'''
-                    INSERT INTO financials.{table_name} (symbol_id, report_date_id, filing_date_id, data)
-                    VALUES (%s, %s, %s, %s)
-                '''
-                db_connector.run_query(insert_query, (
-                    record['symbol_id'], record['report_date_id'], record['filing_date_id'], record['data']),
-                                       return_df=False)
+                    # Collapse dataframe to JSON-like dictionary for DB insertion
+                    data_json = dataframe.to_dict(orient='records')
 
-        print("Data saved to the database.")
+                    # Prepare the record for insertion
+                    record = {
+                        'symbol_id': symbol_id,
+                        'report_date_id': report_date_id,
+                        'filing_date_id': filing_date_id,
+                        'data': json.dumps(data_json)  # Convert the data to a JSON string
+                    }
+
+                    # Insert the record into the appropriate financial table
+                    insert_query = f'''
+                        INSERT INTO financials.{table_name} (symbol_id, report_date_id, filing_date_id, data)
+                        VALUES (%s, %s, %s, %s)
+                    '''
+                    db_connector.run_query(insert_query, (
+                        record['symbol_id'], record['report_date_id'], record['filing_date_id'], record['data']),
+                                           return_df=False)
+
+        if validate and (dataframes_to_validate or self.image_paths):
+            # Fetch both annotated and unannotated images
+            image_paths_to_attach = []
+
+            for category, image_list in self.image_paths.items():
+                for image_path in image_list:
+                    # Add unannotated image to the list
+                    if os.path.exists(image_path):
+                        image_paths_to_attach.append(image_path)
+
+                    # Construct the path for the annotated image
+                    annotated_image = os.path.splitext(image_path)[0] + "_annotated_image" + \
+                                      os.path.splitext(image_path)[1]
+
+                    if os.path.exists(annotated_image):
+                        image_paths_to_attach.append(annotated_image)
+
+            # Send the dataframes and images (both annotated and unannotated) for validation via email
+            if dataframes_to_validate or image_paths_to_attach:
+                recipient_email = "elijahanderson96@gmail.com"  # Replace with the actual recipient email
+                send_validation_email(dataframes_to_validate, recipient_email, image_paths_to_attach)
+
+            print("Data and images (both annotated and unannotated) sent for validation via email.")
+        elif not validate:
+            print("Data saved to the database.")
 
 
 if __name__ == "__main__":
-    # import argparse
-    #
-    # parser = argparse.ArgumentParser(description="YOLOv8 Data Table Extraction")
-    # parser.add_argument("--model_path", type=str, required=True, help="Path to the YOLOv8 model file.")
-    # parser.add_argument("--image_path", type=str, required=True, help="Path to the image file")
-    # args = parser.parse_args()
-    # extractor = Extract(model_path=args.model_path, image_path=args.image_path)
-    # frame = extractor.run()
-
-    # model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train34\weights\best.pt"
-    # filings_dir = r"C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\AON\10-Q\0001445305-14-004665"
-    #
-    # self = Extract(symbol='AON',
-    #                filings_dir=filings_dir,
-    #                model_path=model_path)
-    #
-    # cash_flow, balance_sheet, income_statement = self.run()
-    # self.save_data()
-
     symbol = 'MU'
-    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\latest_quarterly_reports\sec-edgar-filings\MU'
+    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\MU'
     model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train5\weights\best.pt"
 
     filings = os.listdir(os.path.join(symbol_dir, '10-Q'))
+    filing = filings[-2]
 
-    for filing in filings:
-        print(f'PROCCESSING {filing}...')
-        self = Extract(symbol=symbol,
-                       filings_dir=os.path.join(symbol_dir, '10-Q', filing),
-                       model_path=model_path)
+    # for filing in filings[-1:]:
+    print(f'PROCCESSING {filing}...')
+    self = Extract(symbol=symbol,
+                   filings_dir=os.path.join(symbol_dir, '10-Q', filing),
+                   model_path=model_path)
 
-        cash_flow, balance_sheet, income_statement = self.run()
-        print(cash_flow)
-        print(balance_sheet)
-        print(income_statement)
-        input("")
-        self.save_data()
+    cash_flow = self.extract_cash_flow()
+    balance_sheet = self.extract_balance_sheet()
+    income = self.extract_income_statement()
+    #self.save_data()

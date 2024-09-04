@@ -1,7 +1,5 @@
 import logging
 import argparse
-import re
-import time
 
 from ultralytics import YOLO
 import cv2
@@ -76,7 +74,7 @@ def classify_and_move(files):
 def main(symbol_dirs):
     all_files = []
     for symbol_dir in symbol_dirs:
-        symbol_path = os.path.join(ROOT_DIR, "latest_quarterly_reports", 'sec-edgar-filings', symbol_dir, '10-Q')
+        symbol_path = os.path.join(ROOT_DIR, 'sec-edgar-filings', symbol_dir, '10-Q')
         print(f"Searching directory: {symbol_path}")
         for root, dirs, files in os.walk(symbol_path):
             # Ensure we don't create tables directory infinitely

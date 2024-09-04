@@ -66,7 +66,9 @@ async def login(user_credentials: UserLogin, response: Response):
 
     add_delay(start_time)
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    email = db_connector.run_query('SELECT email from users.users where id=%s', (user["id"],),fetch_one=True)
+
+    return {"access_token": access_token, "token_type": "bearer", "email": email}
 
 
 def authenticate_user(username: str, password: str) -> dict | None:
