@@ -13,14 +13,13 @@ from typing import Dict, List
 import re
 from dateutil import parser
 
-from database.async_database import db_connector
+from database.database import db_connector
 from database.helpers import get_date_id, get_symbol_id
 from helpers.email_utils import send_validation_email
 
 
 class Extract:
     def __init__(self, symbol, filings_dir, model_path):
-        self.aggregated_data = []
         self.symbol = symbol
         self.model_path = model_path
         self.filings_dir = filings_dir
@@ -28,6 +27,7 @@ class Extract:
         self.full_submission = self.find_full_submission()
         self.filed_as_of_date = self._extract_filed_as_of_date()
         self.report_date = self.extract_report_date()
+        self.aggregated_data = []
 
         print(f"Filed as of date determined to be: {self.filed_as_of_date}")
         print(f"Report date determined to be: {self.report_date}")
@@ -125,7 +125,40 @@ class Extract:
 
         return image_paths
 
-    def perform_inference(self, image_path, conf_threshold: float = 0.65, output_path: str = None):
+    def letterbox(self, image, new_shape=(1280, 1280), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True):
+        # Resize image to a 32-pixel-multiple rectangle
+        shape = image.shape[:2]  # current shape [height, width]
+        if isinstance(new_shape, int):
+            new_shape = (new_shape, new_shape)
+
+        # Scale ratio (new / old) and new unpadded shape
+        r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+        if not scaleup:  # only scale down, do not scale up (for better val mAP)
+            r = min(r, 1.0)
+
+        ratio = r, r  # width, height ratios
+        new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
+
+        # Compute padding
+        dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
+        if auto:  # minimum rectangle
+            dw, dh = np.mod(dw, 32), np.mod(dh, 32)  # wh padding
+        elif scaleFill:  # stretch
+            dw, dh = 0.0, 0.0
+            new_unpad = new_shape
+            ratio = new_shape[1] / shape[1], new_shape[0] / shape[0]  # width, height ratios
+
+        dw /= 2  # divide padding into 2 sides
+        dh /= 2
+
+        if shape[::-1] != new_unpad:  # resize
+            image = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
+        top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+        left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+        image = cv2.copyMakeBorder(image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
+        return image, ratio, (dw, dh)
+
+    def perform_inference(self, image_path, conf_threshold: float = 0.25, output_path: str = None):
         """
         Performs inference on the image to detect bounding boxes.
 
@@ -136,8 +169,14 @@ class Extract:
             the bounding boxes the model outputs during inference.
         """
         try:
+            # Load the image
             img = cv2.imread(image_path)
-            results = self.model(img, conf=conf_threshold)
+
+            # Apply letterboxing (resize with padding)
+            padded_img, ratio, (dw, dh) = self.letterbox(img)
+
+            # Perform inference on the letterboxed image
+            results = self.model(padded_img, conf=conf_threshold)
 
             # Define colors for each class
             colors = {
@@ -155,7 +194,13 @@ class Extract:
                     class_name = self.class_names[int(box.cls[0])]
                     color = colors.get(class_name, (255, 255, 255))  # Default to white if class is not found
 
-                    x_min, y_min, x_max, y_max = map(int, box.xyxy[0].tolist())
+                    # Adjust bounding box positions to match the original image
+                    x_min = int((box.xyxy[0][0] - dw) / ratio[0])
+                    y_min = int((box.xyxy[0][1] - dh) / ratio[1])
+                    x_max = int((box.xyxy[0][2] - dw) / ratio[0])
+                    y_max = int((box.xyxy[0][3] - dh) / ratio[1])
+
+                    # Draw the bounding box
                     cv2.rectangle(img_with_boxes, (x_min, y_min), (x_max, y_max), color, 2)
 
             # Create a legend image
@@ -186,7 +231,7 @@ class Extract:
 
     def extract_text_from_bounding_boxes(self, results, image_path, conf_threshold: float = 0.25) -> dict:
         """
-        Extracts text from bounding boxes and stores them in class_text_mapping.
+        Extracts text from bounding boxes and handles image resizing to match the inference stage.
 
         Args:
             results: Inference results containing bounding boxes.
@@ -195,14 +240,26 @@ class Extract:
         """
         try:
             self.class_text_mapping = {class_name: [] for class_name in self.class_names}
+
+            # Load the image
             image = cv2.imread(image_path)
+
+            # Apply letterboxing (resize with padding) just like in perform_inference
+            letterboxed_img, ratio, (dw, dh) = self.letterbox(image)
+
+            # Initialize a list to hold the bounding boxes with their classes
             boxes_with_classes = []
 
+            # Iterate over the detected results
             for result in results:
                 for i, box in enumerate(result.boxes):
                     if box.conf[0] >= conf_threshold:  # Check confidence threshold
                         class_name = self.class_names[int(box.cls[0])]
-                        x_min, y_min, x_max, y_max = map(int, box.xyxy[0])
+                        # Adjust the bounding box coordinates to match the letterboxed image
+                        x_min = int((box.xyxy[0][0] - dw) / ratio[0])
+                        y_min = int((box.xyxy[0][1] - dh) / ratio[1])
+                        x_max = int((box.xyxy[0][2] - dw) / ratio[0])
+                        y_max = int((box.xyxy[0][3] - dh) / ratio[1])
                         boxes_with_classes.append((x_min, y_min, x_max, y_max, class_name))
 
             # Separate boxes by class for sorting
@@ -224,24 +281,23 @@ class Extract:
 
             for (x_min, y_min, x_max, y_max, class_name) in sorted_boxes_with_classes:
                 if class_name == 'Data':
-                    x_min = int(x_min * .9)
-                    x_max = int(x_max * 1.1)
+                    x_min = int(x_min * .95)
+                    x_max = int(x_max * 1.05)
                 elif class_name == 'Unit':
-                    x_min = int(x_min * .5)
-                    x_max = int(x_max * 2)
+                    x_min = int(x_min * .95)
+                    x_max = int(x_max * 1.05)
 
                 cropped_img = image[y_min:y_max, x_min:x_max]
-                ocr_result = self.reader.readtext(cropped_img)
 
+                # Perform OCR
+                ocr_result = self.reader.readtext(cropped_img)
+                # Handle OCR results based on class
                 if class_name == 'Column Title':
                     self._handle_date_class(ocr_result)
-
                 elif class_name == 'Data':
                     self.handle_data(ocr_result)
-
                 elif class_name == 'Unit':
                     self._handle_unit_class(ocr_result)
-
                 elif class_name == 'Column Group Title':
                     self.class_text_mapping[class_name].extend([text for (bbox, text, prob) in ocr_result])
 
@@ -319,6 +375,45 @@ class Extract:
                 if re.match(r'^-?\d+(\.\d+)?$', item.strip('(').replace(',', '')) else item.strip('(')
         return float(item.replace(',', '')) if re.match(r'^-?\d+(\.\d+)?$', item.replace(',', '')) else item
 
+    @staticmethod
+    def handle_eps_and_shares_count(input_list):
+        """
+        Preprocesses the input list by searching for 'Basic' and 'Diluted', and updates the keys based on
+        the values to their right.
+
+        Args:
+            input_list (list): The list containing financial data.
+
+        Returns:
+            list: The updated list with appropriate keys for 'Basic' and 'Diluted'.
+        """
+        i = 0
+        while i < len(input_list):
+            item = input_list[i]
+
+            # Ensure the item is a string and check for 'Basic' or 'Diluted'
+            if isinstance(item, str) and item.strip().lower() in ["basic", "diluted"]:
+                key = item.strip().lower()
+
+                # Check if the next value is a number
+                if i + 1 < len(input_list):
+                    try:
+                        # Attempt to convert the next value to a float
+                        next_value = float(input_list[i + 1].replace(',', ''))
+
+                        # If next_value is less than 1000, it's likely Earnings per Share
+                        if next_value < 1000:
+                            input_list[i] = f"Earnings per Share: {key.capitalize()}"
+                        else:
+                            # Otherwise, it's shares used in the calculation
+                            input_list[i] = f"Shares used in Earnings per Share Calculation: {key.capitalize()}"
+                    except ValueError:
+                        # Handle non-numeric data, continue without modification
+                        pass
+            i += 1
+
+        return input_list
+
     def parse_financial_data(self, input_list):
         """
         Parses financial data from a list into a dictionary with keys and associated numerical values.
@@ -329,30 +424,63 @@ class Extract:
         Returns:
             dict: The parsed financial data as a dictionary.
         """
+        input_list = self.handle_eps_and_shares_count(input_list)
         financial_data = {}
-        current_key = None
+        current_key_parts = []
         values = []
 
         for item in input_list:
             cleaned_item = self.clean_value(item)
 
-            # If it's a number, it should be part of the values for the current key
+            # If the item is a number, it should be part of the values for the current key
             if isinstance(cleaned_item, (int, float)):
                 values.append(cleaned_item)
             else:
                 # If we have a current key and values, store them in the dictionary
-                if current_key and values:
+                if current_key_parts and values:
+                    current_key = ' '.join(current_key_parts).strip()
                     financial_data[current_key] = values
                     values = []
+                    current_key_parts = []
 
-                # Update current key
-                current_key = cleaned_item
+                # Append the item to the current key parts
+                current_key_parts.append(cleaned_item)
 
-        # After loop, ensure the last key and values are added to the dictionary
-        if current_key and values:
+        # After the loop, ensure the last key and values are added to the dictionary
+        if current_key_parts and values:
+            current_key = ' '.join(current_key_parts).strip()
             financial_data[current_key] = values
 
-        return financial_data
+        # Post-process the keys to ensure quality by merging any neighboring string keys
+        processed_data = self._post_process_keys(financial_data)
+
+        return processed_data
+
+    def _post_process_keys(self, data):
+        """
+        Post-process the financial data dictionary to combine any neighboring string keys.
+
+        Args:
+            data (dict): The parsed financial data with potentially split keys.
+
+        Returns:
+            dict: The cleaned financial data with combined string keys.
+        """
+        cleaned_data = {}
+        previous_key = None
+
+        for key, value in data.items():
+            # Check if the previous key exists and if this key is a continuation of the previous one
+            if previous_key and not data[previous_key] and isinstance(previous_key, str) and isinstance(key, str):
+                # Combine previous key with the current one
+                combined_key = f"{previous_key} {key}".strip()
+                cleaned_data[combined_key] = value
+            else:
+                # Add the current key and value to the cleaned data
+                cleaned_data[key] = value
+                previous_key = key
+
+        return cleaned_data
 
     def _extract_data_for_category(self, category):
         """
@@ -372,10 +500,8 @@ class Extract:
 
         for image_path in image_list:
             inference_results = self.perform_inference(image_path)
-            text_mapping = self.extract_text_from_bounding_boxes(inference_results, image_path)
-
+            self.extract_text_from_bounding_boxes(inference_results, image_path)
             # Flatten the extracted data into a single list
-            self.aggregated_data.extend(text_mapping['Data'])
 
         # After processing all images, parse the aggregated data
         parsed_data = self.parse_financial_data(self.aggregated_data)
@@ -393,24 +519,37 @@ class Extract:
             if filtered_data:
                 category_dataframe = pd.DataFrame.from_dict(filtered_data, orient='index').T
 
-                financial_unit = self.class_text_mapping['Unit'][0].get('financial_unit', 1)
-                share_unit = self.class_text_mapping['Unit'][0].get('share_unit', 1)
+                # Handle the case where there are no units defined
+                financial_unit = 1  # Default to 1 if no financial unit is found
+                share_unit = 1  # Default to 1 if no share unit is found
+
+                if 'Unit' in self.class_text_mapping and len(self.class_text_mapping['Unit']) > 0:
+                    financial_unit = self.class_text_mapping['Unit'][0].get('financial_unit', 1)
+                    share_unit = self.class_text_mapping['Unit'][0].get('share_unit', 1)
 
                 column_titles = self._generate_column_titles()
-
-                print(column_titles)
 
                 # Set column titles (which are now the index names)
                 if len(column_titles) == category_dataframe.shape[0]:
                     category_dataframe.index = column_titles
 
                 # Apply financial and share units to the DataFrame
-                # If the column contains "basic", "diluted", or "share", apply share_unit instead of financial_unit
-                excluded_keywords = ["basic", "diluted", "share"]
+                share_unit_keywords = ["Shares used in Earnings per Share Calculation"]
+                exclude_keywords = ["Earnings per Share", "per share"]
 
                 def apply_units(val, col_title):
-                    if any(keyword in col_title.lower() for keyword in excluded_keywords):
+                    """
+                    Applies the correct unit to the value based on the column title.
+                    """
+                    # Apply share unit for columns containing "Shares used in Earnings per Share Calculation"
+                    if any(keyword in col_title for keyword in share_unit_keywords):
                         return val * share_unit if isinstance(val, (int, float)) else val
+
+                    # Exclude columns containing "Earnings per Share" or "per share" from any multiplication
+                    if any(keyword in col_title for keyword in exclude_keywords):
+                        return val
+
+                    # Apply financial unit for all other columns
                     return val * financial_unit if isinstance(val, (int, float)) else val
 
                 # Apply units to all values in the DataFrame based on column names
@@ -449,13 +588,16 @@ class Extract:
             return column_titles
 
     def extract_cash_flow(self):
-        return self._extract_data_for_category('cash_flow')
+        self.cash_flow = self._extract_data_for_category('cash_flow')
+        return self.cash_flow
 
     def extract_balance_sheet(self):
-        return self._extract_data_for_category('balance_sheet')
+        self.balance_sheet = self._extract_data_for_category('balance_sheet')
+        return self.balance_sheet
 
     def extract_income_statement(self):
-        return self._extract_data_for_category('income')
+        self.income_statement = self._extract_data_for_category('income')
+        return self.income_statement
 
     def save_data(self, validate=False):
         """
@@ -463,8 +605,11 @@ class Extract:
         with the appropriate date and symbol fields. If validate is True, it sends an email for
         validation instead of directly saving to the database.
         """
+        if any(df is None or df.empty for df in [self.cash_flow, self.balance_sheet, self.income_statement]):
+            raise ValueError("Error: One or more required dataframes are either None or empty.")
+
         symbol_id = get_symbol_id(self.symbol)
-        report_date_id, filing_date_id = get_date_id(self.report_date), get_date_id(self.filed_as_of_date)
+        report_date_id, filing_date_id = map(get_date_id, [self.report_date, self.filed_as_of_date])
 
         tables = {
             'cash_flow': self.cash_flow,
@@ -472,77 +617,46 @@ class Extract:
             'income': self.income_statement
         }
 
-        dataframes_to_validate = {}
+        dataframes_to_validate, image_paths_to_attach = {}, []
 
         for table_name, dataframe in tables.items():
-            if dataframe is not None and not dataframe.empty:
-                if validate:
-                    # Add report_date and filed_as_of_date as columns to the DataFrame for validation
-                    dataframe['report_date_id'] = report_date_id
-                    dataframe['filed_as_of_date_id'] = filing_date_id
-                    dataframe['symbol_id'] = symbol_id
-
-                    # Transpose and reset index to make the DataFrame ready for validation
-                    dataframe = dataframe.T.reset_index()
-                    dataframes_to_validate[table_name] = dataframe
-                else:
-                    # For direct DB insertion, prepare the dataframe for insertion without adding extra columns
-                    dataframe = dataframe.T.reset_index()
-
-                    # Collapse dataframe to JSON-like dictionary for DB insertion
-                    data_json = dataframe.to_dict(orient='records')
-
-                    # Prepare the record for insertion
-                    record = {
-                        'symbol_id': symbol_id,
-                        'report_date_id': report_date_id,
-                        'filing_date_id': filing_date_id,
-                        'data': json.dumps(data_json)  # Convert the data to a JSON string
-                    }
-
-                    # Insert the record into the appropriate financial table
-                    insert_query = f'''
-                        INSERT INTO financials.{table_name} (symbol_id, report_date_id, filing_date_id, data)
-                        VALUES (%s, %s, %s, %s)
-                    '''
-                    db_connector.run_query(insert_query, (
-                        record['symbol_id'], record['report_date_id'], record['filing_date_id'], record['data']),
-                                           return_df=False)
+            if validate:
+                dataframe['report_date_id'] = report_date_id
+                dataframe['filed_as_of_date_id'] = filing_date_id
+                dataframe['symbol_id'] = symbol_id
+                dataframes_to_validate[table_name] = dataframe.T.reset_index()
+            else:
+                data_json = dataframe.T.reset_index().to_dict(orient='records')
+                record = {
+                    'symbol_id': symbol_id,
+                    'report_date_id': report_date_id,
+                    'filing_date_id': filing_date_id,
+                    'data': json.dumps(data_json)
+                }
+                insert_query = f'''
+                    INSERT INTO financials.{table_name} (symbol_id, report_date_id, filing_date_id, data)
+                    VALUES (%s, %s, %s, %s)
+                '''
+                db_connector.run_query(insert_query, (symbol_id, report_date_id, filing_date_id, record['data']),
+                                       return_df=False)
 
         if validate and (dataframes_to_validate or self.image_paths):
-            # Fetch both annotated and unannotated images
-            image_paths_to_attach = []
-
-            for category, image_list in self.image_paths.items():
+            for image_list in self.image_paths.values():
                 for image_path in image_list:
-                    # Add unannotated image to the list
-                    if os.path.exists(image_path):
-                        image_paths_to_attach.append(image_path)
+                    annotated_image = f"{os.path.splitext(image_path)[0]}_annotated_image{os.path.splitext(image_path)[1]}"
+                    image_paths_to_attach += [p for p in [image_path, annotated_image] if os.path.exists(p)]
 
-                    # Construct the path for the annotated image
-                    annotated_image = os.path.splitext(image_path)[0] + "_annotated_image" + \
-                                      os.path.splitext(image_path)[1]
-
-                    if os.path.exists(annotated_image):
-                        image_paths_to_attach.append(annotated_image)
-
-            # Send the dataframes and images (both annotated and unannotated) for validation via email
             if dataframes_to_validate or image_paths_to_attach:
-                recipient_email = "elijahanderson96@gmail.com"  # Replace with the actual recipient email
-                send_validation_email(dataframes_to_validate, recipient_email, image_paths_to_attach)
-
-            print("Data and images (both annotated and unannotated) sent for validation via email.")
-        elif not validate:
-            print("Data saved to the database.")
+                send_validation_email(dataframes_to_validate, "elijahanderson96@gmail.com", image_paths_to_attach)
 
 
 if __name__ == "__main__":
-    symbol = 'MU'
-    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\MU'
-    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train5\weights\best.pt"
+    symbol = 'ZI'
+    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\ZI'
+    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train41\weights\best.pt"
 
     filings = os.listdir(os.path.join(symbol_dir, '10-Q'))
-    filing = filings[-2]
+    filing = filings[0]
 
     # for filing in filings[-1:]:
     print(f'PROCCESSING {filing}...')
@@ -553,4 +667,4 @@ if __name__ == "__main__":
     cash_flow = self.extract_cash_flow()
     balance_sheet = self.extract_balance_sheet()
     income = self.extract_income_statement()
-    #self.save_data()
+    # self.save_data(validate=False)

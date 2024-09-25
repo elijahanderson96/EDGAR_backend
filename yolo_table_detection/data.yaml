@@ -1,0 +1,7 @@
+
+train: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_table_detection/images/train
+val: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_table_detection/images/val
+test: C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_table_detection/images/test
+
+nc: 3
+names: ["Income", "Cash Flow", "Balance Sheet"]

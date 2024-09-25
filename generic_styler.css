@@ -9,3 +9,9 @@ div {
     padding-left: 0 !important;
     text-indent: 0 !important;
 }
+
+@media print {
+    .page-break {
+        page-break-before: always;
+    }
+}

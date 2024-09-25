@@ -1,5 +1,6 @@
 import logging
 import argparse
+from edgar.symbols import symbols
 
 from ultralytics import YOLO
 import cv2
@@ -7,9 +8,9 @@ import shutil
 import sys
 import os
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.abspath(os.path.join(script_dir, os.pardir))
-sys.path.append(root_dir)
+# script_dir = os.path.dirname(os.path.abspath(__file__))
+# root_dir = os.path.abspath(os.path.join(script_dir, os.pardir))
+# sys.path.append(root_dir)
 
 from config.filepaths import ROOT_DIR
 
@@ -18,7 +19,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Load pre-trained YOLOv8 model
 print("Loading pre-trained YOLOv8 model...")
-model = YOLO(r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\classify\train3\weights\best.pt")
+model = YOLO(r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\classify\train25\weights\best.pt")
 
 
 def perform_inference(image_path, model):
@@ -33,7 +34,7 @@ def perform_inference(image_path, model):
             top_class_index = result.probs.top1
             print(f"Detected class: {class_labels[top_class_index]} with confidence: {top_confidence:.4f}")
 
-            if top_confidence >= 0.85:
+            if top_confidence >= 0.80:
                 classification = class_labels[top_class_index]
             else:
                 print(
@@ -88,10 +89,12 @@ def main(symbol_dirs):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Classify and move files')
-    parser.add_argument('symbol_dirs', metavar='D', type=str, nargs='*', help='a list of symbol directories to process')
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser(description='Classify and move files')
+    # parser.add_argument('symbol_dirs', metavar='D', type=str, nargs='*', help='a list of symbol directories to process')
+    # args = parser.parse_args()
+    #
+    # print(f"Directories to process: {args.symbol_dirs}")
+    # main(args.symbol_dirs)
+    #for symbol in symbols['symbol'].to_list()[1:]:
 
-    print(f"Directories to process: {args.symbol_dirs}")
-    main(args.symbol_dirs)
-    # main(['UNH'])
+    main(symbols['symbol'].to_list()[1:])

@@ -1,3 +1,0 @@
-train: /Users/elijahanderson/PycharmProjects/EDGAR_backend/yolo_classifier/train
-val: /Users/elijahanderson/PycharmProjects/EDGAR_backend/yolo_classifier/val
-test: /Users/elijahanderson/PycharmProjects/EDGAR_backend/yolo_classifier/test

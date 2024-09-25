@@ -1,4 +1,4 @@
-from database.async_database import db_connector
+from database.database import db_connector
 
 
 def get_symbol_id(symbol):

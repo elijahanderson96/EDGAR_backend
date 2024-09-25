@@ -11,7 +11,7 @@ from config.configs import AA_PASSWORD, AA_USERNAME
 
 
 class YOLOV8DetectionFunction:
-    def __init__(self, model_path: str, labels: List[str], confidence_threshold: float = .40) -> None:
+    def __init__(self, model_path: str, labels: List[str], confidence_threshold: float = .621) -> None:
         # Load the YOLOv8 model
         self._model = YOLO(model_path)
         self._labels = labels
@@ -89,8 +89,8 @@ class YOLOV8DetectionFunction:
         return shapes
 
 
-model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train5\weights\best.pt"
-
+model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train41\weights\best.pt" # extract
+# model_path = r'C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train16\weights\best.pt'
 # Log into the CVAT server
 # with make_client(host="http://localhost:8080",
 #                  credentials=(AA_USERNAME, AA_PASSWORD)) as client:
@@ -106,7 +106,17 @@ print(AA_USERNAME, AA_PASSWORD)
 with make_client(host="https://app.cvat.ai",
                  credentials=(AA_USERNAME, AA_PASSWORD)) as client:
     # Annotate task 12345 using the custom model
-    cvataa.annotate_task(client, 819553,
+    cvataa.annotate_task(client, 915973,
                          YOLOV8DetectionFunction(model_path=model_path,
                                                  labels=["Unit", "Data", "Column Title", "Column Group Title"]),
                          )
+
+
+# # Log into the CVAT server
+# with make_client(host="https://app.cvat.ai",
+#                  credentials=(AA_USERNAME, AA_PASSWORD)) as client:
+#     # Annotate task 12345 using the custom model
+#     cvataa.annotate_task(client, 903806,
+#                          YOLOV8DetectionFunction(model_path=model_path,
+#                                                  labels=["Income", "Cash Flow", "Balance Sheet"]),
+#                          )
