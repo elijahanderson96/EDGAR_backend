@@ -77,9 +77,17 @@ random.shuffle(symbols)
 
 
 def main(start_date, end_date, model_path):
+    sec_edgar_filings_dir = os.path.join(os.getcwd(), 'sec-edgar-filings')
     for symbol in symbols:
-        # for symbol in ['AAPL', 'NVDA', 'AMZN', 'MSFT', 'GOOGL', 'META']:
         try:
+            # Construct the directory path for the current symbol
+            symbol_dir = os.path.join(sec_edgar_filings_dir, symbol)
+
+            # Check if the directory for this symbol already exists
+            if os.path.exists(symbol_dir):
+                print(f"Skipping {symbol} as its directory already exists.")
+                # continue  # Skip to the next symbol
+
             print(f"Downloading docs for {symbol}")
             download_10q_reports(symbol, start_date, end_date)
 
@@ -111,7 +119,7 @@ if __name__ == "__main__":
     #     parser.error("Date format should be YYYY-MM-DD")
     #
     # main(args.start_date, args.end_date, args.model_path)
-    start_date = datetime.date(2023, 1, 1)
+    start_date = datetime.date(2024, 6, 1)
     end_date = datetime.date(2024, 12, 31)
 
     # Format the dates as strings in the format YYYY-MM-DD
@@ -119,7 +127,7 @@ if __name__ == "__main__":
     end_date_str = end_date.strftime('%Y-%m-%d')
 
     # Define the model path
-    model_path = r'C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train41\weights\best.pt'
+    model_path = r'C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train44\weights\best.pt'
 
     # Call the main function with the formatted date strings
     main(start_date=start_date_str, end_date=end_date_str, model_path=model_path)
