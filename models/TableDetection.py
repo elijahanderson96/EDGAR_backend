@@ -6,7 +6,6 @@ import sys
 sys.path.append("..")
 
 
-
 class FinancialTableDetector:
     def __init__(self, model_path='best.pt', symbol_dir=None, padding_color=(255, 255, 255)):
         """
@@ -14,7 +13,6 @@ class FinancialTableDetector:
 
         :param model_path: Path to the YOLOv8 model weights file.
         :param symbol_dir: Directory containing the symbol folder with the 10-Q filings.
-        :param resize_to: Optional. Tuple (width, height) to resize the cropped image. If None, no resizing will be done.
         :param padding_color: Color to use for padding. Default is white (255, 255, 255).
         """
         self.model = YOLO(model_path)
@@ -45,7 +43,7 @@ class FinancialTableDetector:
         Detects tables in all images within the tables subdirectories of the symbol directory,
         crops them with 10% padding, optionally resizes them or adds padding, and saves the
         processed images under the label name in the same directory only if the confidence
-        score is 0.95 or higher.
+        score is 0.95 or higher. Files not moved to label directories will be deleted.
         """
         # Supported image file extensions
         supported_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff')
@@ -53,6 +51,8 @@ class FinancialTableDetector:
         # Walk through all subdirectories under the symbol directory
         for root, dirs, files in os.walk(self.symbol_dir):
             if 'tables' in root:  # Only process directories that contain 'tables'
+                moved_files = set()  # Track files that are successfully processed and moved
+
                 for filename in files:
                     if filename.lower().endswith(supported_extensions):
                         image_path = os.path.join(root, filename)
@@ -109,10 +109,18 @@ class FinancialTableDetector:
                                             # Save the cropped image
                                             cropped_img.save(save_path, optimize=True)
 
-                                        else:
-                                            print(
+                                            # Add the successfully saved file path to the moved_files set
+                                            moved_files.add(image_path)
 
-                                                f"Skipping detection {idx + 1} due to low confidence ({confidence_score:.2f})")
+                                        else:
+                                            print(f"Skipping detection {idx + 1} due to low confidence ({confidence_score:.2f})")
+
+                # After processing, delete any files in the root directory that were not moved
+                for filename in files:
+                    file_path = os.path.join(root, filename)
+                    if file_path not in moved_files:
+                        print(f"Deleting unprocessed file: {file_path}")
+                        os.remove(file_path)
 
 
 if __name__ == "__main__":
@@ -130,15 +138,6 @@ if __name__ == "__main__":
     detector = FinancialTableDetector(
         model_path=model_path,
         symbol_dir=symbol_dir,
-        # resize_to=(1280, 1280)  # Optional resize (e.g., 1280x1280)
     )
 
     detector.detect_and_crop_tables()
-
-# if __name__ == "__main__":
-#     # Example usage
-#     detector = FinancialTableDetector(
-#         model_path=r'C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train16\weights\best.pt',
-#         symbol_dir=r'C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\AMZN',
-#     )
-#     detector.detect_and_crop_tables()

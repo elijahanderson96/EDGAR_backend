@@ -158,7 +158,7 @@ class Extract:
         image = cv2.copyMakeBorder(image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
         return image, ratio, (dw, dh)
 
-    def perform_inference(self, image_path, conf_threshold: float = 0.25, output_path: str = None):
+    def perform_inference(self, image_path, conf_threshold: float = 0.54, output_path: str = None):
         """
         Performs inference on the image to detect bounding boxes.
 
@@ -240,20 +240,15 @@ class Extract:
         """
         try:
             self.class_text_mapping = {class_name: [] for class_name in self.class_names}
-
-            # Load the image
             image = cv2.imread(image_path)
 
             # Apply letterboxing (resize with padding) just like in perform_inference
             letterboxed_img, ratio, (dw, dh) = self.letterbox(image)
-
-            # Initialize a list to hold the bounding boxes with their classes
             boxes_with_classes = []
 
-            # Iterate over the detected results
             for result in results:
                 for i, box in enumerate(result.boxes):
-                    if box.conf[0] >= conf_threshold:  # Check confidence threshold
+                    if box.conf[0] >= conf_threshold:
                         class_name = self.class_names[int(box.cls[0])]
                         # Adjust the bounding box coordinates to match the letterboxed image
                         x_min = int((box.xyxy[0][0] - dw) / ratio[0])
@@ -281,25 +276,24 @@ class Extract:
 
             for (x_min, y_min, x_max, y_max, class_name) in sorted_boxes_with_classes:
                 if class_name == 'Data':
-                    x_min = int(x_min * .95)
-                    x_max = int(x_max * 1.05)
+                    x_min = int(x_min * .85)
+                    x_max = int(x_max * 1.15)
                 elif class_name == 'Unit':
                     x_min = int(x_min * .95)
                     x_max = int(x_max * 1.05)
 
                 cropped_img = image[y_min:y_max, x_min:x_max]
 
-                # Perform OCR
                 ocr_result = self.reader.readtext(cropped_img)
-                # Handle OCR results based on class
+
                 if class_name == 'Column Title':
-                    self._handle_date_class(ocr_result)
+                    self._handle_date_class(ocr_result, type='Column Title')
                 elif class_name == 'Data':
                     self.handle_data(ocr_result)
                 elif class_name == 'Unit':
                     self._handle_unit_class(ocr_result)
                 elif class_name == 'Column Group Title':
-                    self.class_text_mapping[class_name].extend([text for (bbox, text, prob) in ocr_result])
+                    self._handle_date_class(ocr_result, type='Group Title')
 
             print(f"Extracted text from bounding boxes: {self.class_text_mapping}")
             return self.class_text_mapping
@@ -308,25 +302,15 @@ class Extract:
             logging.error(f"Error during text extraction: {e}")
             raise
 
-    def _handle_date_class(self, ocr_result):
-        """
-        Handles the 'Date' class by consolidating all list elements into a single string and normalizing dates.
-
-        Args:
-            ocr_result: OCR results from EasyOCR.
-        """
-        consolidated_text = " ".join([text for (bbox, text, prob) in ocr_result]).replace(',', '')
-        self.class_text_mapping['Column Title'].append(consolidated_text)
+    def _handle_date_class(self, ocr_result, type):
+        consolidated_text = " ".join([text for (bbox, text, prob) in ocr_result])
+        cleaned_text = re.sub(r'[^A-Za-z0-9\s]', '', consolidated_text)
+        self.class_text_mapping['Column Title'].append(cleaned_text) if type == 'Column Title' \
+            else self.class_text_mapping['Column Group Title'].append(cleaned_text)
 
     def _handle_unit_class(self, ocr_result):
-        """
-        Handles the 'Unit' class by resolving what the unit is.
-
-        Args:
-            ocr_result: OCR results from EasyOCR.
-        """
+        # TODO: The last if statement is going to break in some cases. Try to implement a better solution.
         unit_texts = [text for (bbox, text, prob) in ocr_result]
-
         units = {'financial_unit': 1, 'share_unit': 1}
         for text in unit_texts:
             if 'million' in text.lower():
@@ -339,29 +323,12 @@ class Extract:
         self.class_text_mapping['Unit'].append(units)
 
     def handle_data(self, ocr_result):
-        """
-        Handles data by parsing the OCR results into key-value pairs.
-
-        Args:
-            ocr_result: OCR results from EasyOCR.
-        """
-        # Collect all text into a list from all the different data bounding boxes
         all_texts = []
         [all_texts.append(text) for bbox, text, prob in ocr_result if text and text not in ('S', '$')]
-
-        # aggregate the data into a list for each table type (balance sheet, income, cash flow).
         self.aggregated_data.extend(all_texts)
 
     @staticmethod
     def clean_value(item):
-        """
-        Clean and convert values, stripping parentheses and converting to negative if needed.
-        Args:
-            item (str): The string to clean and convert.
-
-        Returns:
-            float or str: The cleaned and converted value or the original string if it's not a number.
-        """
         item = item.strip()  # Remove leading and trailing spaces
         # Remove any enclosing parentheses and determine if it should be negative
         if item.startswith('(') and item.endswith(')'):
@@ -377,53 +344,29 @@ class Extract:
 
     @staticmethod
     def handle_eps_and_shares_count(input_list):
-        """
-        Preprocesses the input list by searching for 'Basic' and 'Diluted', and updates the keys based on
-        the values to their right.
-
-        Args:
-            input_list (list): The list containing financial data.
-
-        Returns:
-            list: The updated list with appropriate keys for 'Basic' and 'Diluted'.
-        """
         i = 0
         while i < len(input_list):
             item = input_list[i]
 
-            # Ensure the item is a string and check for 'Basic' or 'Diluted'
             if isinstance(item, str) and item.strip().lower() in ["basic", "diluted"]:
                 key = item.strip().lower()
 
-                # Check if the next value is a number
                 if i + 1 < len(input_list):
                     try:
-                        # Attempt to convert the next value to a float
                         next_value = float(input_list[i + 1].replace(',', ''))
 
-                        # If next_value is less than 1000, it's likely Earnings per Share
                         if next_value < 1000:
                             input_list[i] = f"Earnings per Share: {key.capitalize()}"
                         else:
                             # Otherwise, it's shares used in the calculation
                             input_list[i] = f"Shares used in Earnings per Share Calculation: {key.capitalize()}"
                     except ValueError:
-                        # Handle non-numeric data, continue without modification
                         pass
             i += 1
 
         return input_list
 
     def parse_financial_data(self, input_list):
-        """
-        Parses financial data from a list into a dictionary with keys and associated numerical values.
-
-        Args:
-            input_list (list): The list containing financial data.
-
-        Returns:
-            dict: The parsed financial data as a dictionary.
-        """
         input_list = self.handle_eps_and_shares_count(input_list)
         financial_data = {}
         current_key_parts = []
@@ -457,15 +400,6 @@ class Extract:
         return processed_data
 
     def _post_process_keys(self, data):
-        """
-        Post-process the financial data dictionary to combine any neighboring string keys.
-
-        Args:
-            data (dict): The parsed financial data with potentially split keys.
-
-        Returns:
-            dict: The cleaned financial data with combined string keys.
-        """
         cleaned_data = {}
         previous_key = None
 
@@ -483,15 +417,6 @@ class Extract:
         return cleaned_data
 
     def _extract_data_for_category(self, category):
-        """
-        Generic method to extract data for a given category (cash flow, balance sheet, or income).
-
-        Args:
-            category (str): The category of data to extract (e.g., 'cash_flow', 'balance_sheet', 'income').
-
-        Returns:
-            pd.DataFrame or None: The extracted data as a DataFrame or None if no data found.
-        """
         self.aggregated_data = []
 
         image_list = self.image_paths.get(category, [])
@@ -501,25 +426,19 @@ class Extract:
         for image_path in image_list:
             inference_results = self.perform_inference(image_path)
             self.extract_text_from_bounding_boxes(inference_results, image_path)
-            # Flatten the extracted data into a single list
 
-        # After processing all images, parse the aggregated data
         parsed_data = self.parse_financial_data(self.aggregated_data)
 
-        # Apply filtering logic based on the median length of values
         if parsed_data:
-            # Calculate the lengths of the values
             lengths = [len(v) for v in parsed_data.values() if isinstance(v, list)]
             median_length = int(median(lengths)) if lengths else 0
 
             # Filter entries where the length of the value matches the median length
             filtered_data = {k: v for k, v in parsed_data.items() if isinstance(v, list) and len(v) == median_length}
 
-            # Convert filtered data to DataFrame if there are valid entries
             if filtered_data:
                 category_dataframe = pd.DataFrame.from_dict(filtered_data, orient='index').T
 
-                # Handle the case where there are no units defined
                 financial_unit = 1  # Default to 1 if no financial unit is found
                 share_unit = 1  # Default to 1 if no share unit is found
 
@@ -533,26 +452,18 @@ class Extract:
                 if len(column_titles) == category_dataframe.shape[0]:
                     category_dataframe.index = column_titles
 
-                # Apply financial and share units to the DataFrame
                 share_unit_keywords = ["Shares used in Earnings per Share Calculation"]
                 exclude_keywords = ["Earnings per Share", "per share"]
 
                 def apply_units(val, col_title):
-                    """
-                    Applies the correct unit to the value based on the column title.
-                    """
-                    # Apply share unit for columns containing "Shares used in Earnings per Share Calculation"
                     if any(keyword in col_title for keyword in share_unit_keywords):
                         return val * share_unit if isinstance(val, (int, float)) else val
 
-                    # Exclude columns containing "Earnings per Share" or "per share" from any multiplication
                     if any(keyword in col_title for keyword in exclude_keywords):
                         return val
 
-                    # Apply financial unit for all other columns
                     return val * financial_unit if isinstance(val, (int, float)) else val
 
-                # Apply units to all values in the DataFrame based on column names
                 for col in category_dataframe.columns:
                     category_dataframe[col] = category_dataframe[col].apply(lambda val: apply_units(val, col))
 
@@ -572,11 +483,9 @@ class Extract:
         group_titles = self.class_text_mapping['Column Group Title']
 
         if group_titles:
-            # Determine the chunk size for each group title
             chunk_size = len(column_titles) // len(group_titles)
             combined_titles = []
 
-            # Append group title to corresponding column titles
             for i, group_title in enumerate(group_titles):
                 start_idx = i * chunk_size
                 end_idx = (i + 1) * chunk_size
@@ -584,7 +493,6 @@ class Extract:
 
             return combined_titles
         else:
-            # Use column titles only if no group titles are present
             return column_titles
 
     def extract_cash_flow(self):
@@ -607,6 +515,13 @@ class Extract:
         """
         if any(df is None or df.empty for df in [self.cash_flow, self.balance_sheet, self.income_statement]):
             raise ValueError("Error: One or more required dataframes are either None or empty.")
+
+        for df_name, df in {'cash_flow': self.cash_flow, 'balance_sheet': self.balance_sheet,
+                            'income_statement': self.income_statement}.items():
+            # Check if the index contains placeholders like '0' or '1', we don't save these. If they exist,
+            # It means the ML model failed to detect bounding boxes for the column titles corresponding to date.
+            if df.index.isin([0, 1]).all():
+                raise ValueError("Error: Index was not parsed properly, we cannot save data.")
 
         symbol_id = get_symbol_id(self.symbol)
         report_date_id, filing_date_id = map(get_date_id, [self.report_date, self.filed_as_of_date])
@@ -651,9 +566,9 @@ class Extract:
 
 
 if __name__ == "__main__":
-    symbol = 'ZI'
-    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\ZI'
-    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train41\weights\best.pt"
+    symbol = 'A'
+    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\A'
+    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train44\weights\best.pt"
 
     filings = os.listdir(os.path.join(symbol_dir, '10-Q'))
     filing = filings[0]
@@ -667,4 +582,4 @@ if __name__ == "__main__":
     cash_flow = self.extract_cash_flow()
     balance_sheet = self.extract_balance_sheet()
     income = self.extract_income_statement()
-    # self.save_data(validate=False)
+    self.save_data(validate=False)
