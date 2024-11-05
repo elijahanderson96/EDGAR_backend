@@ -7,8 +7,8 @@ async def make_request(session, url, headers):
         await response.read()  # ensure the response is fully consumed
 
 async def run_load_test(num_requests):
-    url = "http://localhost:8000/metadata/balance_sheet?symbol=AAPL"
-    headers = {'X-API-KEY': '929ad1fa-57de-46f8-a3c7-7b45c3899605'}
+    url = "https://api.equityexplorer.io/metadata/balance_sheet?symbol=AAPL"
+    headers = {'X-API-KEY': '52b205d5-93e0-4d68-a202-8b081638de4e'}
 
     async with aiohttp.ClientSession() as session:
         tasks = [make_request(session, url, headers) for _ in range(num_requests)]

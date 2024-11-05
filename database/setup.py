@@ -247,3 +247,10 @@ db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA finan
 db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA users TO read_only;', return_df=False)
 db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA metadata TO read_only;', return_df=False)
 db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA financials TO read_only;', return_df=False)
+
+db.run_query("""
+CREATE TABLE metadata.unrecognized_words (
+    id SERIAL PRIMARY KEY,
+    word VARCHAR(255) UNIQUE NOT NULL,
+    corrected_word VARCHAR(255)
+);""", return_df=False)
