@@ -10,11 +10,11 @@ output_dir = r"C:\Users\Elijah\PycharmProjects\edgar_backend\yolo_dataset"
 
 # Initialize YOLOv8 model from scratch
 logging.info("Initializing YOLOv8 model from scratch...")
-model = YOLO()
+model = YOLO('yolov8s.pt')
 
 # Specify hyperparameters for training, including modified learning rate and batch size
 hyperparameters = {
-    'batch': 32,  # Batch size
+    'batch': 16,  # Batch size
     'imgsz': 1280,  # Image size
     'epochs': 250,  # Number of epochs
     'patience': 25,  # Early stopping patience

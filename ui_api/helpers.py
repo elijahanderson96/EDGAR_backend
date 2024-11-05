@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from fastapi import Request, HTTPException, status
-from starlette.responses import JSONResponse
 
 from database.async_database import db_connector
 

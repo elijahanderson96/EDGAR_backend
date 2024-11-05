@@ -9,10 +9,8 @@ from ui_api.helpers import get_user_id_and_request_type, update_api_usage_count
 from ui_api.models.financials import FinancialRecord
 from database.async_database import db_connector
 
-# Initialize logging
 logging.basicConfig(level=logging.INFO)
 
-# Define the FastAPI app
 financials_router = APIRouter()
 
 
@@ -52,6 +50,10 @@ async def fetch_financial_data(table: str, symbol: Optional[str], report_date: O
     if latest_n_records:
         query += f" ORDER BY f.id DESC LIMIT ${param_index}"
         params.append(latest_n_records)
+    else:
+        query += f" ORDER BY f.id DESC LIMIT 500"
+        params.append(latest_n_records)
+
 
     records = await db_connector.run_query(query, params=params)
 

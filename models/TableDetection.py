@@ -15,7 +15,7 @@ class FinancialTableDetector:
         :param symbol_dir: Directory containing the symbol folder with the 10-Q filings.
         :param padding_color: Color to use for padding. Default is white (255, 255, 255).
         """
-        self.model = YOLO(model_path)
+        self.model = YOLO(model_path, verbose=False)
         self.symbol_dir = symbol_dir
         self.padding_color = padding_color
 
@@ -58,7 +58,7 @@ class FinancialTableDetector:
                         image_path = os.path.join(root, filename)
 
                         # Perform inference with the model
-                        results = self.model(image_path)
+                        results = self.model(image_path, verbose=False)
 
                         # Open the original image
                         with Image.open(image_path) as img:
@@ -119,7 +119,7 @@ class FinancialTableDetector:
                 for filename in files:
                     file_path = os.path.join(root, filename)
                     if file_path not in moved_files:
-                        print(f"Deleting unprocessed file: {file_path}")
+                        # print(f"Deleting unprocessed file: {file_path}")
                         os.remove(file_path)
 
 

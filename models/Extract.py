@@ -17,6 +17,8 @@ from database.database import db_connector
 from database.helpers import get_date_id, get_symbol_id
 from helpers.email_utils import send_validation_email
 
+from models.Transform import ValidateColumns
+
 
 class Extract:
     def __init__(self, symbol, filings_dir, model_path):
@@ -158,7 +160,7 @@ class Extract:
         image = cv2.copyMakeBorder(image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
         return image, ratio, (dw, dh)
 
-    def perform_inference(self, image_path, conf_threshold: float = 0.54, output_path: str = None):
+    def perform_inference(self, image_path, conf_threshold: float = 0.65, output_path: str = None):
         """
         Performs inference on the image to detect bounding boxes.
 
@@ -176,7 +178,7 @@ class Extract:
             padded_img, ratio, (dw, dh) = self.letterbox(img)
 
             # Perform inference on the letterboxed image
-            results = self.model(padded_img, conf=conf_threshold)
+            results = self.model(padded_img, conf=conf_threshold, verbose=False)
 
             # Define colors for each class
             colors = {
@@ -228,6 +230,38 @@ class Extract:
         except Exception as e:
             logging.error(f"Error during inference: {e}")
             raise
+
+    def resize_image(self, image, scale_factor: float = 2.0):
+        height, width = image.shape[:2]
+        resized_image = cv2.resize(image, (int(width * scale_factor), int(height * scale_factor)))
+        return resized_image
+
+    def preprocess_image(self, image, show=False, save_path=None):
+        # Convert image to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        # Increase contrast
+        contrast_img = cv2.convertScaleAbs(gray, alpha=1.5, beta=0)
+
+        # Apply Gaussian blur to reduce noise
+        denoised_img = cv2.GaussianBlur(contrast_img, (5, 5), 0)
+
+        # Binarize the image
+        _, binary_img = cv2.threshold(denoised_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Display the image in a pop-up window
+        if show:
+            # Show the image in a window using OpenCV
+            cv2.imshow("Preprocessed Image", binary_img)
+            cv2.waitKey(0)  # Wait for a key press to close the window
+            cv2.destroyAllWindows()
+
+        # Save the preprocessed image to disk if a save path is provided
+        if save_path:
+            cv2.imwrite(save_path, binary_img)
+            print(f"Preprocessed image saved to {save_path}")
+
+        return binary_img
 
     def extract_text_from_bounding_boxes(self, results, image_path, conf_threshold: float = 0.25) -> dict:
         """
@@ -283,8 +317,11 @@ class Extract:
                     x_max = int(x_max * 1.05)
 
                 cropped_img = image[y_min:y_max, x_min:x_max]
+                enlarged_cropped_img = self.resize_image(cropped_img,)
+                #preprocessed_img = self.preprocess_image(enlarged_cropped_img, show=True,
+                #                                         save_path="preprocessed_image.png")
 
-                ocr_result = self.reader.readtext(cropped_img)
+                ocr_result = self.reader.readtext(enlarged_cropped_img)
 
                 if class_name == 'Column Title':
                     self._handle_date_class(ocr_result, type='Column Title')
@@ -295,6 +332,7 @@ class Extract:
                 elif class_name == 'Column Group Title':
                     self._handle_date_class(ocr_result, type='Group Title')
 
+            self.class_text_mapping['Data'] = self.aggregated_data
             print(f"Extracted text from bounding boxes: {self.class_text_mapping}")
             return self.class_text_mapping
 
@@ -305,6 +343,7 @@ class Extract:
     def _handle_date_class(self, ocr_result, type):
         consolidated_text = " ".join([text for (bbox, text, prob) in ocr_result])
         cleaned_text = re.sub(r'[^A-Za-z0-9\s]', '', consolidated_text)
+        cleaned_text = cleaned_text.replace("Mnth", "Month")
         self.class_text_mapping['Column Title'].append(cleaned_text) if type == 'Column Title' \
             else self.class_text_mapping['Column Group Title'].append(cleaned_text)
 
@@ -324,7 +363,7 @@ class Extract:
 
     def handle_data(self, ocr_result):
         all_texts = []
-        [all_texts.append(text) for bbox, text, prob in ocr_result if text and text not in ('S', '$')]
+        [all_texts.append(text) for bbox, text, prob in ocr_result if text and text not in ('S', '$', '5')]
         self.aggregated_data.extend(all_texts)
 
     @staticmethod
@@ -404,13 +443,10 @@ class Extract:
         previous_key = None
 
         for key, value in data.items():
-            # Check if the previous key exists and if this key is a continuation of the previous one
             if previous_key and not data[previous_key] and isinstance(previous_key, str) and isinstance(key, str):
-                # Combine previous key with the current one
                 combined_key = f"{previous_key} {key}".strip()
                 cleaned_data[combined_key] = value
             else:
-                # Add the current key and value to the cleaned data
                 cleaned_data[key] = value
                 previous_key = key
 
@@ -507,21 +543,45 @@ class Extract:
         self.income_statement = self._extract_data_for_category('income')
         return self.income_statement
 
+
     def save_data(self, validate=False):
         """
         Save the dataframes for cash_flow, balance_sheet, and income_statement to the database
         with the appropriate date and symbol fields. If validate is True, it sends an email for
         validation instead of directly saving to the database.
         """
-        if any(df is None or df.empty for df in [self.cash_flow, self.balance_sheet, self.income_statement]):
-            raise ValueError("Error: One or more required dataframes are either None or empty.")
 
+        def is_index_placeholder(index):
+            # Check if the index is monotonically increasing or follows expected date structure
+            return (index == 0).all() or index.is_monotonic_increasing == False
+
+        validator = ValidateColumns()
         for df_name, df in {'cash_flow': self.cash_flow, 'balance_sheet': self.balance_sheet,
                             'income_statement': self.income_statement}.items():
-            # Check if the index contains placeholders like '0' or '1', we don't save these. If they exist,
-            # It means the ML model failed to detect bounding boxes for the column titles corresponding to date.
-            if df.index.isin([0, 1]).all():
-                raise ValueError("Error: Index was not parsed properly, we cannot save data.")
+
+            if is_index_placeholder(df.index):
+                raise ValueError(f"Error: Index for {df_name} contains placeholders; cannot save data.")
+
+            invalid_columns = []
+            corrected_columns = {}
+
+            for column_name in df.columns:
+                is_valid, corrected_column = validator.validate_line_item(column_name)
+                if not is_valid and not corrected_column:
+                    invalid_columns.append(column_name)
+                elif corrected_column and corrected_column != column_name:
+                    corrected_columns[column_name] = corrected_column
+
+            if corrected_columns:
+                df.rename(columns=corrected_columns, inplace=True)
+
+            if invalid_columns:
+                print(f"Removing invalid columns from {df_name}: {invalid_columns}")
+                df.drop(columns=invalid_columns, inplace=True)
+
+
+        if any(df is None or df.empty for df in [self.cash_flow, self.balance_sheet, self.income_statement]):
+            raise ValueError("Error: One or more required dataframes are either None or empty.")
 
         symbol_id = get_symbol_id(self.symbol)
         report_date_id, filing_date_id = map(get_date_id, [self.report_date, self.filed_as_of_date])
@@ -566,9 +626,9 @@ class Extract:
 
 
 if __name__ == "__main__":
-    symbol = 'A'
-    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\A'
-    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train44\weights\best.pt"
+    symbol = 'GEO'
+    symbol_dir = r'C:\Users\Elijah\PycharmProjects\edgar_backend\sec-edgar-filings\GEO'
+    model_path = r"C:\Users\Elijah\PycharmProjects\edgar_backend\runs\detect\train57\weights\best.pt"
 
     filings = os.listdir(os.path.join(symbol_dir, '10-Q'))
     filing = filings[0]
