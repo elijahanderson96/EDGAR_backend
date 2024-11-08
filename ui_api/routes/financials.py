@@ -47,13 +47,12 @@ async def fetch_financial_data(table: str, symbol: Optional[str], report_date: O
         query += f" AND fd.date = ${param_index}"
         params.append(datetime.strptime(filing_date, '%Y-%m-%d'))
         param_index += 1
-    if latest_n_records:
-        query += f" ORDER BY f.id DESC LIMIT ${param_index}"
-        params.append(latest_n_records)
-    else:
-        query += f" ORDER BY f.id DESC LIMIT 500"
-        params.append(latest_n_records)
 
+    # Add limit directly if provided, else default to 500 without adding to params
+    if latest_n_records:
+        query += f" ORDER BY f.id DESC LIMIT {latest_n_records}"
+    else:
+        query += " ORDER BY f.id DESC LIMIT 500"
 
     records = await db_connector.run_query(query, params=params)
 
@@ -65,6 +64,7 @@ async def fetch_financial_data(table: str, symbol: Optional[str], report_date: O
     records['filing_date'] = records['filing_date'].apply(lambda x: x.strftime('%Y-%m-%d'))
 
     return records.to_dict(orient='records')
+
 
 
 @financials_router.get("/cash_flow", response_model=List[FinancialRecord])

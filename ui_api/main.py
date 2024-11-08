@@ -3,10 +3,12 @@ import logging
 import sys
 
 from fastapi import FastAPI
+from fastapi.openapi.docs import get_swagger_ui_html
 from jose import jwt
 
 from ui_api.routes.account import account_router
 from ui_api.routes.auth import auth_router
+from ui_api.routes.data_catalogue import stocks_router
 from ui_api.routes.financials import financials_router
 from database.async_database import db_connector
 
@@ -32,7 +34,6 @@ class DocsFilter(logging.Filter):
 # properly communicating with the server.
 logging.getLogger("uvicorn.access").addFilter(DocsFilter())
 
-# Define custom logging configuration
 logging_config = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -67,14 +68,14 @@ logging_config = {
     },
 }
 
-# Apply logging configuration
 logging.config.dictConfig(logging_config)
 
 
 class APIKeyJWTMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # auth routes are excluded so users can obtain access/refresh tokens.
-        excluded_paths = ["/login", "/register", "/authenticate", "/docs", "/refresh", "/authenticate/{auth_token}"]
+        excluded_paths = ["/login", "/register", "/authenticate", "/docs", "/refresh", "/authenticate/{auth_token}",
+                          "/openapi.json"]
 
         # Skip logging for the /docs endpoint
         if request.url.path == "/docs":
@@ -118,10 +119,11 @@ class APIKeyJWTMiddleware(BaseHTTPMiddleware):
 origins = [
     "https://equityexplorer.io",
     "http://localhost",  # For local testing
-    "http://localhost:3000"  # For local React dev server
+    "http://localhost:3000",  # For local React dev server
+    "http://localhost:8000"  # Add this if Swagger UI is served from this port
+
 ]
 
-# To differentiate where requests are made from.
 app.add_middleware(APIKeyJWTMiddleware)
 
 app.add_middleware(
@@ -143,6 +145,16 @@ async def shutdown():
     await db_connector.close()
 
 
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html(req: Request):
+    root_path = req.scope.get("root_path", "").rstrip("/")
+    openapi_url = root_path + app.openapi_url
+    return get_swagger_ui_html(
+        openapi_url=openapi_url,
+        title="API",
+    )
+
+
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 
@@ -150,3 +162,4 @@ app.include_router(auth_router)
 app.include_router(financials_router, prefix='/financials')
 app.include_router(account_router)
 app.include_router(metadata_router)
+app.include_router(stocks_router, prefix='/stocks')
