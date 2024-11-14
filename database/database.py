@@ -630,3 +630,8 @@ class PostgreSQLConnector:
 
 
 db_connector = PostgreSQLConnector(**db_config)
+
+connection_string = (
+    f"postgresql://{db_config['user']}:{db_config['password']}@"
+    f"{db_config['host']}:{db_config['port']}/{db_config['dbname']}"
+)

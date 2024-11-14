@@ -12,7 +12,7 @@ script_dir = os.getcwd()
 root_dir = os.path.abspath(os.path.join(script_dir, os.pardir))
 sys.path.append(root_dir)
 
-symbols = symbols['symbol'].to_list()
+symbols = symbols['symbol'].to_list()[0:10]
 
 
 # random.shuffle(symbols)
@@ -119,14 +119,14 @@ def main(start_date, end_date, model_path):
             print(f"Downloading docs for {symbol}")
             download_10q_reports(symbol, start_date, end_date)
 
-            print(f"Extracting tables from latest {symbol}")
-            convert_html_to_pngs(symbol)
-
-            print(f"detecting tables for {symbol}")
-            detect_tables(symbol)
-
-            print(f"Extracting data from {symbol}")
-            extract_data(symbol, model_path)
+            # print(f"Extracting tables from latest {symbol}")
+            # convert_html_to_pngs(symbol)
+            #
+            # print(f"detecting tables for {symbol}")
+            # detect_tables(symbol)
+            #
+            # print(f"Extracting data from {symbol}")
+            # extract_data(symbol, model_path)
         except Exception as e:
             print(e)
 

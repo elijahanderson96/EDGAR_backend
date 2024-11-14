@@ -24,34 +24,10 @@ db = PostgreSQLConnector(
 # db.create_database("edgar")
 db.dbname = "edgar"
 
-# Create the "company_facts" schema
-# db.create_schema("company_facts")
-#
 # # Get the symbol mapping
+
 cik_to_symbol_mapping = resolve_cik_to_symbol_mapping()
-#
-# # Create tables for each symbol
-# for cik, company_info in cik_to_symbol_mapping.items():
-#     symbol = company_info["symbol"]
-#     table_name = symbol.lower().replace("-", "_")
-#
-#     columns = {
-#         "id": "SERIAL PRIMARY KEY",
-#         "fact_key": "TEXT",
-#         "label": "TEXT",
-#         "description": "TEXT",
-#         "accession_number": "TEXT",
-#         "end_date": "DATE",
-#         "filed_date": "DATE",
-#         "form": "TEXT",
-#         "fiscal_period": "TEXT",
-#         "fiscal_year": "INTEGER",
-#         "value": "NUMERIC",
-#         "frame": "TEXT"
-#     }
-#
-#     db.create_table(table_name, columns, schema="company_facts")
-#
+
 db.create_schema('users')
 
 user_columns = {
@@ -74,7 +50,9 @@ db.run_query('CREATE SCHEMA IF NOT EXISTS financials;', return_df=False)
 db.run_query('''
     CREATE TABLE IF NOT EXISTS metadata.symbols (
         symbol_id SERIAL PRIMARY KEY,
-        symbol VARCHAR(255) UNIQUE NOT NULL
+        cik VARCHAR(11) UNIQUE NOT NULL,
+        symbol VARCHAR(255) UNIQUE NOT NULL,
+        title VARCHAR(255)
     );
 ''', return_df=False)
 
@@ -86,116 +64,6 @@ db.run_query('''
     );
 ''', return_df=False)
 
-# -- Create balance_sheet table with unique constraint
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.balance_sheet (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        report_date_id INT REFERENCES metadata.dates(date_id),
-        filing_date_id INT REFERENCES metadata.dates(date_id),
-        data JSON NOT NULL,
-        CONSTRAINT unique_balance_sheet UNIQUE(symbol_id, report_date_id, filing_date_id)
-    );
-''', return_df=False)
-
-# -- Create cash_flow table with unique constraint
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.cash_flow (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        report_date_id INT REFERENCES metadata.dates(date_id),
-        filing_date_id INT REFERENCES metadata.dates(date_id),
-        data JSON NOT NULL,
-        CONSTRAINT unique_cash_flow UNIQUE(symbol_id, report_date_id, filing_date_id)
-    );
-''', return_df=False)
-
-# -- Create income table with unique constraint
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.income (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        report_date_id INT REFERENCES metadata.dates(date_id),
-        filing_date_id INT REFERENCES metadata.dates(date_id),
-        data JSON NOT NULL,
-        CONSTRAINT unique_income UNIQUE(symbol_id, report_date_id, filing_date_id)
-    );
-''', return_df=False)
-
-
-# Assuming db_connector is your database connection instance
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS metadata.api_usage (
-    id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES users.users(id),
-    billing_period VARCHAR(7) NOT NULL,
-    cash_flow_route_count INT DEFAULT 0 NOT NULL,
-    balance_sheet_route_count INT DEFAULT 0 NOT NULL,
-    income_statement_route_count INT DEFAULT 0 NOT NULL,
-    stock_prices_route_count INT DEFAULT 0 NOT NULL,
-    metadata_route_count INT DEFAULT 0 NOT NULL,
-    UNIQUE(user_id, billing_period)
-    )
-''', return_df=False)
-
-
-db.run_query('CREATE INDEX idx_api_usage_user_id_month_id ON metadata.api_usage(user_id, billing_period);',
-             return_df=False)
-
-# Create indexes for symbols table
-db.run_query('CREATE INDEX IF NOT EXISTS idx_symbols_symbol ON metadata.symbols(symbol);', return_df=False)
-
-# Create indexes for dates table
-db.run_query('CREATE INDEX IF NOT EXISTS idx_dates_date ON metadata.dates(date);', return_df=False)
-
-# Create indexes for balance_sheet table
-db.run_query('CREATE INDEX IF NOT EXISTS idx_balance_sheet_symbol_id ON financials.balance_sheet(symbol_id);',
-             return_df=False)
-db.run_query('CREATE INDEX IF NOT EXISTS idx_balance_sheet_report_date_id ON financials.balance_sheet(report_date_id);',
-             return_df=False)
-db.run_query('CREATE INDEX IF NOT EXISTS idx_balance_sheet_filing_date_id ON financials.balance_sheet(filing_date_id);',
-             return_df=False)
-db.run_query(
-    'CREATE INDEX IF NOT EXISTS idx_balance_sheet_symbol_report_date_id ON financials.balance_sheet(symbol_id, report_date_id);',
-    return_df=False)
-db.run_query(
-    'CREATE INDEX IF NOT EXISTS idx_balance_sheet_symbol_filing_date_id ON financials.balance_sheet(symbol_id, filing_date_id);',
-    return_df=False)
-db.run_query(
-    'CREATE INDEX IF NOT EXISTS idx_balance_sheet_report_filing_date_id ON financials.balance_sheet(report_date_id, filing_date_id);',
-    return_df=False)
-
-# Create indexes for cash_flow table
-db.run_query('CREATE INDEX IF NOT EXISTS idx_cash_flow_symbol_id ON financials.cash_flow(symbol_id);', return_df=False)
-db.run_query('CREATE INDEX IF NOT EXISTS idx_cash_flow_report_date_id ON financials.cash_flow(report_date_id);',
-             return_df=False)
-db.run_query('CREATE INDEX IF NOT EXISTS idx_cash_flow_filing_date_id ON financials.cash_flow(filing_date_id);',
-             return_df=False)
-db.run_query(
-    'CREATE INDEX IF NOT EXISTS idx_cash_flow_symbol_report_date_id ON financials.cash_flow(symbol_id, report_date_id);',
-    return_df=False)
-db.run_query(
-    'CREATE INDEX IF NOT EXISTS idx_cash_flow_symbol_filing_date_id ON financials.cash_flow(symbol_id, filing_date_id);',
-    return_df=False)
-db.run_query(
-    'CREATE INDEX IF NOT EXISTS idx_cash_flow_report_filing_date_id ON financials.cash_flow(report_date_id, filing_date_id);',
-    return_df=False)
-
-# Create indexes for income table
-db.run_query('CREATE INDEX IF NOT EXISTS idx_income_symbol_id ON financials.income(symbol_id);', return_df=False)
-db.run_query('CREATE INDEX IF NOT EXISTS idx_income_report_date_id ON financials.income(report_date_id);',
-             return_df=False)
-db.run_query('CREATE INDEX IF NOT EXISTS idx_income_filing_date_id ON financials.income(filing_date_id);',
-             return_df=False)
-db.run_query(
-    'CREATE INDEX IF NOT EXISTS idx_income_symbol_report_date_id ON financials.income(symbol_id, report_date_id);',
-    return_df=False)
-db.run_query(
-    'CREATE INDEX IF NOT EXISTS idx_income_symbol_filing_date_id ON financials.income(symbol_id, filing_date_id);',
-    return_df=False)
-db.run_query(
-    'CREATE INDEX IF NOT EXISTS idx_income_report_filing_date_id ON financials.income(report_date_id, filing_date_id);',
-    return_df=False)
 
 print("Database setup completed.")
 
@@ -219,7 +87,7 @@ def populate_dates_table():
 
 def populate_symbols_table(symbols):
     # Insert DataFrame into metadata.symbols table
-    db.insert_dataframe(symbols[['symbol']], name='symbols', schema='metadata', if_exists='append')
+    db.insert_dataframe(symbols, name='symbols', schema='metadata', if_exists='append')
 
 
 populate_dates_table()
@@ -248,9 +116,139 @@ db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA users TO read_only;
 db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA metadata TO read_only;', return_df=False)
 db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA financials TO read_only;', return_df=False)
 
+
+
 db.run_query("""
-CREATE TABLE metadata.unrecognized_words (
-    id SERIAL PRIMARY KEY,
-    word VARCHAR(255) UNIQUE NOT NULL,
-    corrected_word VARCHAR(255)
-);""", return_df=False)
+CREATE TABLE IF NOT EXISTS financials.historical_data (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),  -- Foreign key to metadata.symbols
+        date_id INT REFERENCES metadata.dates(date_id),  -- Foreign key to metadata.dates
+        open NUMERIC,
+        high NUMERIC,
+        low NUMERIC,
+        close NUMERIC,
+        adj_close NUMERIC,
+        volume BIGINT,
+        CONSTRAINT unique_historical_data UNIQUE(symbol_id, date_id)
+    );
+    """, return_df=False)
+
+
+# Define additional tables for financial metrics
+
+# Shares table in financials schema
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.shares (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        value NUMERIC,
+        frame VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.revenue (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+# Assets Table
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.assets (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+# Liabilities Table
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.liabilities (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+# EPS (Earnings Per Share) Basic Table
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.eps_basic (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+# EPS (Earnings Per Share) Diluted Table
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.eps_diluted (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+# Gross Profit Table
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.net_income_loss (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+
+
+print("All tables created successfully with unique constraints on symbol_id, start_date_id, and end_date_id.")
+
+db.run_query("""
+
+DO $$
+DECLARE
+    table_record RECORD;
+BEGIN
+    -- Loop through all tables in the financials schema
+    FOR table_record IN
+        SELECT tablename
+        FROM pg_tables
+        WHERE schemaname = 'financials'
+    LOOP
+        -- Alter the owner of each table to "read_only"
+        EXECUTE format('ALTER TABLE financials.%I OWNER TO read_only;', table_record.tablename);
+    END LOOP;
+
+    -- Repeat the process for the metadata schema
+    FOR table_record IN
+        SELECT tablename
+        FROM pg_tables
+        WHERE schemaname = 'metadata'
+    LOOP
+        EXECUTE format('ALTER TABLE metadata.%I OWNER TO read_only;', table_record.tablename);
+    END LOOP;
+END $$;
+""", return_df=False)
