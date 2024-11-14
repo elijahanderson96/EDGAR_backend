@@ -64,7 +64,6 @@ db.run_query('''
     );
 ''', return_df=False)
 
-
 print("Database setup completed.")
 
 
@@ -116,8 +115,6 @@ db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA users TO read_only;
 db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA metadata TO read_only;', return_df=False)
 db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA financials TO read_only;', return_df=False)
 
-
-
 db.run_query("""
 CREATE TABLE IF NOT EXISTS financials.historical_data (
         id SERIAL PRIMARY KEY,
@@ -133,7 +130,6 @@ CREATE TABLE IF NOT EXISTS financials.historical_data (
     );
     """, return_df=False)
 
-
 # Define additional tables for financial metrics
 
 # Shares table in financials schema
@@ -143,7 +139,8 @@ db.run_query('''
         symbol_id INT REFERENCES metadata.symbols(symbol_id),
         value NUMERIC,
         frame VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id)
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        UNIQUE(symbol_id, end_date_id)
     );
 ''', return_df=False)
 
@@ -222,7 +219,6 @@ db.run_query('''
     );
 ''', return_df=False)
 
-
 db.run_query('''
     CREATE TABLE IF NOT EXISTS financials.cash_operating_activities (
         id SERIAL PRIMARY KEY,
@@ -281,7 +277,6 @@ db.run_query('''
     );
 ''', return_df=False)
 
-
 db.run_query('''
     CREATE TABLE IF NOT EXISTS financials.gross_profit (
         id SERIAL PRIMARY KEY,
@@ -305,7 +300,6 @@ db.run_query('''
         UNIQUE(symbol_id, start_date_id, end_date_id)
     );
 ''', return_df=False)
-
 
 db.run_query('''
     CREATE TABLE IF NOT EXISTS financials.retained_earnings (
@@ -455,6 +449,49 @@ db.run_query('''
 ''', return_df=False)
 
 print("All tables created successfully with unique constraints on symbol_id, start_date_id, and end_date_id.")
+
+create_table_query = """
+CREATE TABLE IF NOT EXISTS metadata.api_usage (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    billing_period VARCHAR(7) NOT NULL,  -- Format: MM-YYYY
+    metadata_route_count INT DEFAULT 0,
+    assets_route_count INT DEFAULT 0,
+    cash_financing_activities_route_count INT DEFAULT 0,
+    cash_investing_activities_route_count INT DEFAULT 0,
+    cash_operating_activities_route_count INT DEFAULT 0,
+    common_stock_route_count INT DEFAULT 0,
+    comprehensive_income_route_count INT DEFAULT 0,
+    cost_of_revenue_route_count INT DEFAULT 0,
+    current_assets_route_count INT DEFAULT 0,
+    current_liabilities_route_count INT DEFAULT 0,
+    depreciation_and_amortization_route_count INT DEFAULT 0,
+    eps_basic_route_count INT DEFAULT 0,
+    eps_diluted_route_count INT DEFAULT 0,
+    goodwill_route_count INT DEFAULT 0,
+    gross_profit_route_count INT DEFAULT 0,
+    historical_data_route_count INT DEFAULT 0,
+    intangible_assets_route_count INT DEFAULT 0,
+    interest_expense_route_count INT DEFAULT 0,
+    inventory_route_count INT DEFAULT 0,
+    liabilities_route_count INT DEFAULT 0,
+    net_income_loss_route_count INT DEFAULT 0,
+    operating_expenses_route_count INT DEFAULT 0,
+    operating_income_route_count INT DEFAULT 0,
+    operating_income_loss_route_count INT DEFAULT 0,
+    preferred_stock_route_count INT DEFAULT 0,
+    property_plant_and_equipment_route_count INT DEFAULT 0,
+    research_and_development_expense_route_count INT DEFAULT 0,
+    retained_earnings_route_count INT DEFAULT 0,
+    revenue_route_count INT DEFAULT 0,
+    shares_route_count INT DEFAULT 0,
+    total_stockholders_equity_route_count INT DEFAULT 0,
+    UNIQUE (user_id, billing_period)  -- Ensures one record per user per billing period
+);
+"""
+
+# Run the query to create the table
+db.run_query(create_table_query, return_df=False)
 
 db.run_query("""
 

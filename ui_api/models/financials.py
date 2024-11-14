@@ -1,11 +1,11 @@
-from datetime import datetime
-from typing import Any, Dict, List
-
+from datetime import date
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
+from pydantic.types import Decimal
 
 
 class FinancialRecord(BaseModel):
     symbol: str
-    report_date: str
-    filing_date: str
-    data: List[Dict[str, Any]]
+    start_date: Optional[date] = None  # Corresponds to report period start date
+    end_date: Optional[date] = None    # Corresponds to report period end date
+    value: Decimal

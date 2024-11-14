@@ -3,9 +3,35 @@ from pydantic import BaseModel
 class AccountInfo(BaseModel):
     username: str
     email: str
-    api_key:str
-    cash_flow_route_count: int
-    balance_sheet_route_count: int
-    income_statement_route_count: int
-    stock_prices_route_count: int
+    api_key: str
     metadata_route_count: int
+    assets_route_count: int
+    cash_financing_activities_route_count: int
+    cash_investing_activities_route_count: int
+    cash_operating_activities_route_count: int
+    common_stock_route_count: int
+    comprehensive_income_route_count: int
+    cost_of_revenue_route_count: int
+    current_assets_route_count: int
+    current_liabilities_route_count: int
+    depreciation_and_amortization_route_count: int
+    eps_basic_route_count: int
+    eps_diluted_route_count: int
+    goodwill_route_count: int
+    gross_profit_route_count: int
+    historical_data_route_count: int
+    intangible_assets_route_count: int
+    interest_expense_route_count: int
+    inventory_route_count: int
+    liabilities_route_count: int
+    net_income_loss_route_count: int
+    operating_expenses_route_count: int
+    operating_income_route_count: int
+    operating_income_loss_route_count: int
+    preferred_stock_route_count: int
+    property_plant_and_equipment_route_count: int
+    research_and_development_expense_route_count: int
+    retained_earnings_route_count: int
+    revenue_route_count: int
+    shares_route_count: int
+    total_stockholders_equity_route_count: int

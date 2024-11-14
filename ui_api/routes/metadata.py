@@ -6,24 +6,38 @@ from ui_api.helpers import get_user_id_and_request_type, update_api_usage_count
 
 metadata_router = APIRouter()
 
+# Define tables that are instantaneous
+INSTANTANEOUS_TABLES = [
+    "assets", "current_assets", "current_liabilities", "inventory", "liabilities", "property_plant_and_equipment",
+    "shares", "total_stockholders_equity"
+]
+
 
 # Helper function to build and execute queries
 async def fetch_metadata(table: str, symbol: str, start_date: Optional[str], end_date: Optional[str]):
     query_conditions = ["symbol = $1"]
     query_params = [symbol]
 
-    if start_date and end_date:
-        query_conditions.append("report_date BETWEEN $2 AND $3")
-        query_params.extend([
-            datetime.strptime(start_date, '%Y-%m-%d').date(),
-            datetime.strptime(end_date, '%Y-%m-%d').date()
-        ])
-    elif start_date:
-        query_conditions.append("report_date >= $2")
-        query_params.append(datetime.strptime(start_date, '%Y-%m-%d').date())
-    elif end_date:
-        query_conditions.append("report_date <= $2")
-        query_params.append(datetime.strptime(end_date, '%Y-%m-%d').date())
+    # Check if the table is in the instantaneous list to adjust date filtering
+    if table in INSTANTANEOUS_TABLES:
+        # For instantaneous tables, only use `end_date`
+        if end_date:
+            query_conditions.append("report_date <= $2")
+            query_params.append(datetime.strptime(end_date, '%Y-%m-%d').date())
+    else:
+        # For period tables, use `start_date` and `end_date` as a range
+        if start_date and end_date:
+            query_conditions.append("report_date BETWEEN $2 AND $3")
+            query_params.extend([
+                datetime.strptime(start_date, '%Y-%m-%d').date(),
+                datetime.strptime(end_date, '%Y-%m-%d').date()
+            ])
+        elif start_date:
+            query_conditions.append("report_date >= $2")
+            query_params.append(datetime.strptime(start_date, '%Y-%m-%d').date())
+        elif end_date:
+            query_conditions.append("report_date <= $2")
+            query_params.append(datetime.strptime(end_date, '%Y-%m-%d').date())
 
     conditions = " AND ".join(query_conditions)
 
@@ -46,56 +60,22 @@ async def fetch_metadata(table: str, symbol: str, start_date: Optional[str], end
     }
 
 
-@metadata_router.get("/metadata/cash_flow", response_model=Dict[str, Any])
-async def get_cash_flow_metadata(
+@metadata_router.get("/metadata/{table}", response_model=Dict[str, Any])
+async def get_metadata(
         request: Request,
+        table: str,
         symbol: str,
         start_date: Optional[str] = Query(None,
                                           description="Start date for the report date range in YYYY-MM-DD format"),
         end_date: Optional[str] = Query(None, description="End date for the report date range in YYYY-MM-DD format"),
 ):
+    # Ensure the table is a valid financials metadata view
+    if table not in ["cash_flow_mv", "balance_sheet_mv", "income_mv"]:
+        raise HTTPException(status_code=400, detail="Invalid metadata table specified")
+
     try:
-        metadata = await fetch_metadata("financials.cash_flow_mv", symbol, start_date, end_date)
-        # Update API usage count
-        user_id, is_api_key = await get_user_id_and_request_type(request)
-        if is_api_key:
-            await update_api_usage_count(user_id, "metadata", metadata['count'])
+        metadata = await fetch_metadata(f"financials.{table}", symbol, start_date, end_date)
 
-        return metadata
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@metadata_router.get("/metadata/balance_sheet", response_model=Dict[str, Any])
-async def get_balance_sheet_metadata(
-        request: Request,
-        symbol: str,
-        start_date: Optional[str] = Query(None,
-                                          description="Start date for the report date range in YYYY-MM-DD format"),
-        end_date: Optional[str] = Query(None, description="End date for the report date range in YYYY-MM-DD format"),
-):
-    try:
-        metadata = await fetch_metadata("financials.balance_sheet_mv", symbol, start_date, end_date)
-        # Update API usage count
-        user_id, is_api_key = await get_user_id_and_request_type(request)
-        if is_api_key:
-            await update_api_usage_count(user_id, "metadata", metadata['count'])
-
-        return metadata
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@metadata_router.get("/metadata/income", response_model=Dict[str, Any])
-async def get_income_metadata(
-        request: Request,
-        symbol: str,
-        start_date: Optional[str] = Query(None,
-                                          description="Start date for the report date range in YYYY-MM-DD format"),
-        end_date: Optional[str] = Query(None, description="End date for the report date range in YYYY-MM-DD format"),
-):
-    try:
-        metadata = await fetch_metadata("financials.income_mv", symbol, start_date, end_date)
         # Update API usage count
         user_id, is_api_key = await get_user_id_and_request_type(request)
         if is_api_key:
