@@ -1,8 +1,8 @@
-import asyncpg
 import pandas as pd
-from typing import Union, Dict, Optional, Any
+from typing import Any, Dict, List, Optional, Union
 import logging
-from config.configs import dsn  # Ensure this now points to the correct DSN
+from config.configs import dsn
+import asyncpg
 
 
 class AsyncpgConnector:
@@ -39,19 +39,6 @@ class AsyncpgConnector:
     ) -> Optional[Union[pd.DataFrame, Any]]:
         """
         Execute a query on the database.
-
-        Args:
-            query (Union[str, asyncpg.Record]): SQL query as a string or asyncpg Record object.
-            params (Optional[Dict], optional): Dictionary of parameters to use in the query. Defaults to None.
-            return_df (bool, optional): Whether to return the results as a pandas DataFrame.
-                                        Defaults to True. If False, None is returned.
-            fetch_one (bool, optional): Whether to return a single value.
-                                        Defaults to False. If True, returns a single value from the query result.
-
-        Returns:
-            Optional[Union[pd.DataFrame, Any]]: Result of the query as a pandas DataFrame, if return_df is True and
-            the query retrieves data. Otherwise, None is returned. If fetch_one is True, returns a single value from the query
-            result.
         """
         async with self.pool.acquire() as connection:
             try:
@@ -68,6 +55,55 @@ class AsyncpgConnector:
                 self.logger.error(f"Error occurred while executing query: {e}")
                 raise e
 
+    async def drop_existing_rows(
+            self,
+            df: pd.DataFrame,
+            table_name: str,
+            unique_key_columns: List[str]
+    ) -> pd.DataFrame:
+        """
+        Checks if rows in a DataFrame exist in a specified database table
+        and drops duplicates in the DataFrame.
 
-# Usage
+        Parameters:
+        - df (pd.DataFrame): DataFrame with rows to check.
+        - table_name (str): Name of the table to check against.
+        - unique_key_columns (List[str]): List of column names that define uniqueness.
+
+        Returns:
+        - pd.DataFrame: DataFrame with rows that do not exist in the database table.
+        """
+        df = df.drop_duplicates(subset=unique_key_columns)
+
+        values_list = ', '.join(
+            str(tuple(row)) for row in df[unique_key_columns].itertuples(index=False, name=None)
+        )
+        values_clause = f"({', '.join(unique_key_columns)})"
+
+        query = f"""
+        WITH temp_df_check AS (
+            SELECT * FROM (VALUES {values_list}) AS temp {values_clause}
+        )
+        SELECT t.*
+        FROM temp_df_check AS temp
+        JOIN {table_name} AS t
+        ON {" AND ".join([f"temp.{col} = t.{col}" for col in unique_key_columns])}
+        """
+
+        async with self.pool.acquire() as connection:
+            try:
+                existing_rows = await connection.fetch(query)
+
+                # If we have existing rows, filter them out
+                if existing_rows:
+                    existing_df = pd.DataFrame([dict(row) for row in existing_rows])
+                    df = df.merge(existing_df, on=unique_key_columns, how='left', indicator=True)
+                    df = df[df['_merge'] == 'left_only'].drop(columns='_merge')
+            except Exception as e:
+                self.logger.error(f"Error occurred while checking and dropping existing rows: {e}")
+                raise e
+
+        return df
+
+
 db_connector = AsyncpgConnector(dsn=dsn)

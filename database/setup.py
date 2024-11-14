@@ -223,6 +223,236 @@ db.run_query('''
 ''', return_df=False)
 
 
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.cash_operating_activities (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.cash_investing_activities (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.cash_financing_activities (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.current_assets (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.current_liabilities (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.gross_profit (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.operating_income_loss (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.retained_earnings (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.common_stock (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.interest_expense (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.preferred_stock (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.depreciation_and_amortization (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.cost_of_revenue (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.operating_expenses (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.inventory (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.property_plant_and_equipment (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.goodwill (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.intangible_assets (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.total_stockholders_equity (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, end_date_id)
+    );
+''', return_df=False)
+
+db.run_query('''
+    CREATE TABLE IF NOT EXISTS financials.research_and_development_expense (
+        id SERIAL PRIMARY KEY,
+        symbol_id INT REFERENCES metadata.symbols(symbol_id),
+        accn VARCHAR(20),
+        start_date_id INT REFERENCES metadata.dates(date_id),
+        end_date_id INT REFERENCES metadata.dates(date_id),
+        value NUMERIC,
+        UNIQUE(symbol_id, start_date_id, end_date_id)
+    );
+''', return_df=False)
 
 print("All tables created successfully with unique constraints on symbol_id, start_date_id, and end_date_id.")
 
