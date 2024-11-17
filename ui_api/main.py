@@ -160,7 +160,7 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 
 app.include_router(auth_router)
-app.include_router(financials_router, prefix='/financials')
+app.include_router(financials_router)
 app.include_router(account_router)
 app.include_router(metadata_router)
 app.include_router(stocks_router, prefix='/stocks')

@@ -2,84 +2,91 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from database.async_database import db_connector
-from ui_api.helpers import get_user_id_and_request_type, update_api_usage_count
+from ui_api.helpers import get_user_id_and_request_type, update_api_usage
 
 metadata_router = APIRouter()
 
-# Define tables that are instantaneous
-INSTANTANEOUS_TABLES = [
-    "assets", "current_assets", "current_liabilities", "inventory", "liabilities", "property_plant_and_equipment",
-    "shares", "total_stockholders_equity"
-]
 
-
-# Helper function to build and execute queries
-async def fetch_metadata(table: str, symbol: str, start_date: Optional[str], end_date: Optional[str]):
-    query_conditions = ["symbol = $1"]
+# Helper function to build and execute metadata queries
+async def fetch_metadata(symbol: str, fact_name: Optional[str], start_date: Optional[str], end_date: Optional[str]) -> Dict[str, Any]:
+    """
+    Fetch metadata for the specified symbol, optional fact_name, and optional date range.
+    """
+    query_conditions = ["s.symbol = $1"]
     query_params = [symbol]
+    param_index = 2
 
-    # Check if the table is in the instantaneous list to adjust date filtering
-    if table in INSTANTANEOUS_TABLES:
-        # For instantaneous tables, only use `end_date`
-        if end_date:
-            query_conditions.append("report_date <= $2")
-            query_params.append(datetime.strptime(end_date, '%Y-%m-%d').date())
-    else:
-        # For period tables, use `start_date` and `end_date` as a range
-        if start_date and end_date:
-            query_conditions.append("report_date BETWEEN $2 AND $3")
-            query_params.extend([
-                datetime.strptime(start_date, '%Y-%m-%d').date(),
-                datetime.strptime(end_date, '%Y-%m-%d').date()
-            ])
-        elif start_date:
-            query_conditions.append("report_date >= $2")
-            query_params.append(datetime.strptime(start_date, '%Y-%m-%d').date())
-        elif end_date:
-            query_conditions.append("report_date <= $2")
-            query_params.append(datetime.strptime(end_date, '%Y-%m-%d').date())
+    # Add optional fact_name filter
+    if fact_name:
+        query_conditions.append(f"cf.fact_name = ${param_index}")
+        query_params.append(fact_name)
+        param_index += 1
 
-    conditions = " AND ".join(query_conditions)
+    # Date range filtering
+    if start_date:
+        query_conditions.append(f"d_end.date >= ${param_index}")
+        query_params.append(datetime.strptime(start_date, '%Y-%m-%d').date())
+        param_index += 1
+    if end_date:
+        query_conditions.append(f"d_start.date <= ${param_index}")
+        query_params.append(datetime.strptime(end_date, '%Y-%m-%d').date())
+        param_index += 1
 
-    query_count = f"SELECT COUNT(*) as count FROM {table} WHERE {conditions}"
-    query_date_range = f"SELECT MIN(report_date) as start_date, MAX(report_date) as end_date FROM {table} WHERE {conditions}"
-    query_latest_date = f"SELECT MAX(report_date) as latest_date FROM {table} WHERE {conditions}"
+    # Combine conditions into the WHERE clause
+    where_clause = " AND ".join(query_conditions)
 
-    result_count = await db_connector.run_query(query_count, tuple(query_params))
-    result_date_range = await db_connector.run_query(query_date_range, tuple(query_params))
-    result_latest_date = await db_connector.run_query(query_latest_date, tuple(query_params))
+    # Metadata queries
+    query_count = f"""
+    SELECT COUNT(*) AS record_count
+    FROM financials.company_facts cf
+    JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
+    LEFT JOIN metadata.dates d_start ON cf.start_date_id = d_start.date_id
+    LEFT JOIN metadata.dates d_end ON cf.end_date_id = d_end.date_id
+    WHERE {where_clause}
+    """
+    query_date_range = f"""
+    SELECT MIN(d_start.date) AS start_date, MAX(d_end.date) AS end_date
+    FROM financials.company_facts cf
+    JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
+    LEFT JOIN metadata.dates d_start ON cf.start_date_id = d_start.date_id
+    LEFT JOIN metadata.dates d_end ON cf.end_date_id = d_end.date_id
+    WHERE {where_clause}
+    """
+
+    # Execute queries
+    count_result = await db_connector.run_query(query_count, params=query_params)
+    date_range_result = await db_connector.run_query(query_date_range, params=query_params)
 
     return {
         "symbol": symbol,
-        "count": int(result_count.iloc[0]['count']) if not result_count.empty else 0,
+        "fact_name": fact_name,
+        "record_count": int(count_result.iloc[0]["record_count"]) if not count_result.empty else 0,
         "date_range": {
-            "start_date": result_date_range.iloc[0]['start_date'] if not result_date_range.empty else None,
-            "end_date": result_date_range.iloc[0]['end_date'] if not result_date_range.empty else None
-        },
-        "latest_report_date": result_latest_date.iloc[0]['latest_date'] if not result_latest_date.empty else None
+            "start_date": date_range_result.iloc[0]["start_date"] if not date_range_result.empty else None,
+            "end_date": date_range_result.iloc[0]["end_date"] if not date_range_result.empty else None
+        }
     }
 
 
-@metadata_router.get("/metadata/{table}", response_model=Dict[str, Any])
+@metadata_router.get("/metadata", response_model=Dict[str, Any])
 async def get_metadata(
         request: Request,
-        table: str,
-        symbol: str,
-        start_date: Optional[str] = Query(None,
-                                          description="Start date for the report date range in YYYY-MM-DD format"),
-        end_date: Optional[str] = Query(None, description="End date for the report date range in YYYY-MM-DD format"),
+        symbol: str = Query(..., description="Stock symbol (mandatory)"),
+        fact_name: Optional[str] = Query(None, description="Fact name to filter (optional)"),
+        start_date: Optional[str] = Query(None, description="Start date for filtering (optional, format: YYYY-MM-DD)"),
+        end_date: Optional[str] = Query(None, description="End date for filtering (optional, format: YYYY-MM-DD)")
 ):
-    # Ensure the table is a valid financials metadata view
-    if table not in ["cash_flow_mv", "balance_sheet_mv", "income_mv"]:
-        raise HTTPException(status_code=400, detail="Invalid metadata table specified")
-
+    """
+    Endpoint to fetch metadata information from the company_facts table.
+    """
     try:
-        metadata = await fetch_metadata(f"financials.{table}", symbol, start_date, end_date)
+        # Fetch metadata
+        metadata = await fetch_metadata(symbol, fact_name, start_date, end_date)
 
-        # Update API usage count
+        # Update API usage
         user_id, is_api_key = await get_user_id_and_request_type(request)
         if is_api_key:
-            await update_api_usage_count(user_id, "metadata", metadata['count'])
+            await update_api_usage(user_id, "metadata", metadata["record_count"])
 
         return metadata
     except Exception as e:

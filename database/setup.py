@@ -130,324 +130,6 @@ CREATE TABLE IF NOT EXISTS financials.historical_data (
     );
     """, return_df=False)
 
-# Define additional tables for financial metrics
-
-# Shares table in financials schema
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.shares (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        value NUMERIC,
-        frame VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.revenue (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-# Assets Table
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.assets (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-# Liabilities Table
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.liabilities (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-# EPS (Earnings Per Share) Basic Table
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.eps_basic (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-# EPS (Earnings Per Share) Diluted Table
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.eps_diluted (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-# Gross Profit Table
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.net_income_loss (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.cash_operating_activities (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.cash_investing_activities (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.cash_financing_activities (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.current_assets (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.current_liabilities (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.gross_profit (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.operating_income_loss (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.retained_earnings (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.common_stock (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.interest_expense (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.preferred_stock (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.depreciation_and_amortization (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.cost_of_revenue (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.operating_expenses (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.inventory (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.property_plant_and_equipment (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.goodwill (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.intangible_assets (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.total_stockholders_equity (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, end_date_id)
-    );
-''', return_df=False)
-
-db.run_query('''
-    CREATE TABLE IF NOT EXISTS financials.research_and_development_expense (
-        id SERIAL PRIMARY KEY,
-        symbol_id INT REFERENCES metadata.symbols(symbol_id),
-        accn VARCHAR(20),
-        start_date_id INT REFERENCES metadata.dates(date_id),
-        end_date_id INT REFERENCES metadata.dates(date_id),
-        value NUMERIC,
-        UNIQUE(symbol_id, start_date_id, end_date_id)
-    );
-''', return_df=False)
-
 print("All tables created successfully with unique constraints on symbol_id, start_date_id, and end_date_id.")
 
 create_table_query = """
@@ -455,43 +137,35 @@ CREATE TABLE IF NOT EXISTS metadata.api_usage (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL,
     billing_period VARCHAR(7) NOT NULL,  -- Format: MM-YYYY
-    metadata_route_count INT DEFAULT 0,
-    assets_route_count INT DEFAULT 0,
-    cash_financing_activities_route_count INT DEFAULT 0,
-    cash_investing_activities_route_count INT DEFAULT 0,
-    cash_operating_activities_route_count INT DEFAULT 0,
-    common_stock_route_count INT DEFAULT 0,
-    comprehensive_income_route_count INT DEFAULT 0,
-    cost_of_revenue_route_count INT DEFAULT 0,
-    current_assets_route_count INT DEFAULT 0,
-    current_liabilities_route_count INT DEFAULT 0,
-    depreciation_and_amortization_route_count INT DEFAULT 0,
-    eps_basic_route_count INT DEFAULT 0,
-    eps_diluted_route_count INT DEFAULT 0,
-    goodwill_route_count INT DEFAULT 0,
-    gross_profit_route_count INT DEFAULT 0,
-    historical_data_route_count INT DEFAULT 0,
-    intangible_assets_route_count INT DEFAULT 0,
-    interest_expense_route_count INT DEFAULT 0,
-    inventory_route_count INT DEFAULT 0,
-    liabilities_route_count INT DEFAULT 0,
-    net_income_loss_route_count INT DEFAULT 0,
-    operating_expenses_route_count INT DEFAULT 0,
-    operating_income_route_count INT DEFAULT 0,
-    operating_income_loss_route_count INT DEFAULT 0,
-    preferred_stock_route_count INT DEFAULT 0,
-    property_plant_and_equipment_route_count INT DEFAULT 0,
-    research_and_development_expense_route_count INT DEFAULT 0,
-    retained_earnings_route_count INT DEFAULT 0,
-    revenue_route_count INT DEFAULT 0,
-    shares_route_count INT DEFAULT 0,
-    total_stockholders_equity_route_count INT DEFAULT 0,
-    UNIQUE (user_id, billing_period)  -- Ensures one record per user per billing period
+    endpoint_name VARCHAR(255) NOT NULL, -- Name of the route/endpoint (e.g., "assets", "revenue", etc.)
+    route_count INT DEFAULT 0,           -- Count of how many times this endpoint was accessed
+    UNIQUE (user_id, billing_period, endpoint_name)  -- Ensures one record per user, billing period, and endpoint
 );
 """
 
 # Run the query to create the table
 db.run_query(create_table_query, return_df=False)
+columns = """
+            id SERIAL PRIMARY KEY,
+            symbol_id INT REFERENCES metadata.symbols(symbol_id),
+            fact_name VARCHAR(255),
+            start_date_id INT REFERENCES metadata.dates(date_id),
+            end_date_id INT REFERENCES metadata.dates(date_id),
+            filed_date_id INT REFERENCES metadata.dates(date_id),
+            fiscal_year INT,
+            fiscal_period VARCHAR(2),
+            form VARCHAR(10),
+            value NUMERIC,
+            accn VARCHAR(20)
+        """
+create_table_query = f"CREATE TABLE IF NOT EXISTS financials.company_facts ({columns});"
+db.run_query(create_table_query, return_df=False)
+
+db.run_query('''CREATE INDEX idx_company_facts_fact_name ON financials.company_facts (fact_name);
+''', return_df=False)
+
+db.run_query('''CREATE INDEX idx_company_facts_symbol_id_fact_name ON financials.company_facts (symbol_id, fact_name);
+''', return_df=False)
 
 db.run_query("""
 

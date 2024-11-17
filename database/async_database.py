@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from typing import Any, Dict, List, Optional, Union
 import logging
@@ -55,6 +56,8 @@ class AsyncpgConnector:
                 self.logger.error(f"Error occurred while executing query: {e}")
                 raise e
 
+    from typing import List
+
     async def drop_existing_rows(
             self,
             df: pd.DataFrame,
@@ -73,13 +76,17 @@ class AsyncpgConnector:
         Returns:
         - pd.DataFrame: DataFrame with rows that do not exist in the database table.
         """
+        # Drop duplicates based on unique columns
         df = df.drop_duplicates(subset=unique_key_columns)
 
+        # Prepare values list for SQL query, converting None to SQL NULL
         values_list = ', '.join(
-            str(tuple(row)) for row in df[unique_key_columns].itertuples(index=False, name=None)
+            f"({', '.join('NULL' if pd.isna(val) else repr(val) for val in row)})"
+            for row in df[unique_key_columns].itertuples(index=False, name=None)
         )
         values_clause = f"({', '.join(unique_key_columns)})"
 
+        # SQL query to find existing rows
         query = f"""
         WITH temp_df_check AS (
             SELECT * FROM (VALUES {values_list}) AS temp {values_clause}
@@ -92,11 +99,13 @@ class AsyncpgConnector:
 
         async with self.pool.acquire() as connection:
             try:
+                # Execute the query and fetch existing rows
                 existing_rows = await connection.fetch(query)
 
-                # If we have existing rows, filter them out
+                # If we have existing rows, filter them out from the DataFrame
                 if existing_rows:
                     existing_df = pd.DataFrame([dict(row) for row in existing_rows])
+                    # Merge to identify and keep only non-existing rows
                     df = df.merge(existing_df, on=unique_key_columns, how='left', indicator=True)
                     df = df[df['_merge'] == 'left_only'].drop(columns='_merge')
             except Exception as e:
