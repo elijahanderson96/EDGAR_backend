@@ -109,3 +109,4 @@ database/__pycache__/
 yolo_dataset
 yolo_table_detection
 runs
+.aider*
