@@ -56,7 +56,22 @@ class AsyncpgConnector:
                 self.logger.error(f"Error occurred while executing query: {e}")
                 raise e
 
-    from typing import List
+    async def analyze_fact_frequency(self) -> pd.DataFrame:
+        """
+        Analyze the frequency of each fact name being reported across all symbols.
+
+        Returns:
+        - pd.DataFrame: DataFrame with fact names and their reporting frequency percentage.
+        """
+        query = """
+        SELECT fact_name, 
+               COUNT(DISTINCT filed_date_id) AS report_count,
+               (COUNT(DISTINCT filed_date_id) * 100.0 / (SELECT COUNT(DISTINCT filed_date_id) FROM company_facts)) AS frequency_percentage
+        FROM company_facts
+        GROUP BY fact_name
+        ORDER BY frequency_percentage DESC;
+        """
+        return await self.run_query(query, return_df=True)
 
     async def drop_existing_rows(
             self,
