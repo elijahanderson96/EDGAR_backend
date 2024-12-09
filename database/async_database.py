@@ -64,13 +64,12 @@ class AsyncpgConnector:
         - pd.DataFrame: DataFrame with fact names and their reporting frequency percentage.
         """
         query = """
-        SELECT symbol_id, 
-               fact_name, 
-               COUNT(DISTINCT filed_date_id) AS report_count,
-               (COUNT(DISTINCT filed_date_id) * 100.0 / (SELECT COUNT(DISTINCT filed_date_id) FROM company_facts WHERE symbol_id = cf.symbol_id)) AS frequency_percentage
-        FROM company_facts cf
-        GROUP BY symbol_id, fact_name
-        ORDER BY symbol_id, frequency_percentage DESC;
+        SELECT fact_name,
+               (COUNT(DISTINCT filed_date_id) * 100.0 / (SELECT COUNT(DISTINCT filed_date_id) FROM company_facts)) AS filing_percentage,
+               (COUNT(DISTINCT symbol_id) * 100.0 / (SELECT COUNT(DISTINCT symbol_id) FROM company_facts)) AS symbol_percentage
+        FROM company_facts
+        GROUP BY fact_name
+        ORDER BY filing_percentage DESC, symbol_percentage DESC;
         """
         return await self.run_query(query, return_df=True)
 
