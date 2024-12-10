@@ -109,7 +109,7 @@ async def process_symbol(symbol, start_date, end_date):
 
 async def main(start_date, end_date):
     await db_connector.initialize()
-    symbols_list = symbols['symbol'].to_list()  # Assuming symbols is a list of symbols to process
+    symbols_list = symbols['symbol'].to_list()[0:5]  # Assuming symbols is a list of symbols to process
 
     for symbol in symbols_list:
         await process_symbol(symbol, start_date, end_date)  # Sequentially process each symbol

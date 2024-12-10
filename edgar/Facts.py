@@ -156,24 +156,26 @@ class SECCompanyFactsFetcher:
 async def main():
     await db_connector.initialize()  # Initialize the DB connection pool
 
-    cik_symbols = await db_connector.run_query("SELECT cik FROM metadata.symbols")
-    ciks = cik_symbols['cik'].unique()
+    # cik_symbols = await db_connector.run_query("SELECT cik FROM metadata.symbols")
+    # ciks = cik_symbols['cik'].unique()
+    #
+    # # Fetch distinct CIKs already present in the database
+    # ciks_already_present = await db_connector.run_query('''
+    #     SELECT DISTINCT(symbols.cik)
+    #     FROM financials.company_facts
+    #     LEFT JOIN metadata.symbols ON company_facts.symbol_id = symbols.symbol_id;
+    # ''')
+    #
+    # # Convert to sets to perform the subtraction operation
+    # ciks = list(set(ciks) - set(ciks_already_present['cik']))
 
-    # Fetch distinct CIKs already present in the database
-    ciks_already_present = await db_connector.run_query('''
-        SELECT DISTINCT(symbols.cik)
-        FROM financials.company_facts
-        LEFT JOIN metadata.symbols ON company_facts.symbol_id = symbols.symbol_id;
-    ''')
 
-    # Convert to sets to perform the subtraction operation
-    ciks = list(set(ciks) - set(ciks_already_present['cik']))
-
-    for cik in ciks:
-        try:
+    # for cik in ciks:
+    cik = '0001481513'
+    try:
             fetcher = SECCompanyFactsFetcher(cik=str(cik).zfill(10))
             await fetcher.fetch_and_save_all_facts()
-        except Exception as e:
+    except Exception as e:
             print(f"Error processing CIK {cik}: {e}")
 
     await db_connector.close()
