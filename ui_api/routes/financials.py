@@ -19,7 +19,7 @@ async def get_user_id_by_username(username: str) -> int:
     return result.iloc[0]['id']
 
 
-@financials_router.get("/financials", response_model=List[FinancialRecord])
+@financials_router.get("/financials", tags=["Financials_API"], response_model=List[FinancialRecord])
 async def get_financial_data(
         request: Request,
         symbol: str = Query(..., description="Stock symbol (mandatory)"),
