@@ -24,20 +24,7 @@ class FactFrequencyAnalyzer:
         self.fact_names = set(result['fact_name'])
         return self.fact_names
 
-    async def analyze_fact_frequency(self) -> pd.DataFrame:
-        """
-        Analyze the frequency of facts reported by companies.
-
-        Returns:
-        - pd.DataFrame: DataFrame with fact names and their reporting frequency.
-        """
-        query = """
-        SELECT fact_name, COUNT(*) as frequency
-        FROM financials.company_facts
-        GROUP BY fact_name
-        ORDER BY frequency DESC;
-        """
-        return await self.db_connector.run_query(query, return_df=True)
+    async def analyze_fact_reporting(self, fact_name: str) -> pd.DataFrame:
         """
         Analyze which companies report a specific fact.
 
@@ -60,6 +47,21 @@ class FactFrequencyAnalyzer:
         ORDER BY reporting_status, s.symbol;
         """
         return await self.db_connector.run_query(query, params=[fact_name], return_df=True)
+
+    async def analyze_fact_frequency(self) -> pd.DataFrame:
+        """
+        Analyze the frequency of facts reported by companies.
+
+        Returns:
+        - pd.DataFrame: DataFrame with fact names and their reporting frequency.
+        """
+        query = """
+        SELECT fact_name, COUNT(*) as frequency
+        FROM financials.company_facts
+        GROUP BY fact_name
+        ORDER BY frequency DESC;
+        """
+        return await self.db_connector.run_query(query, return_df=True)
 
 
 analyzer = FactFrequencyAnalyzer()
