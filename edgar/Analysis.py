@@ -26,24 +26,35 @@ class FactFrequencyAnalyzer:
 
     async def check_fact_distribution(self, fact_name: str) -> pd.DataFrame:
         """
-        Check which symbols have reported a specific fact and which have not.
+        Check which symbols have reported a specific fact and which have not, and determine the percentage of filings
+        that include the fact for each reporting company.
 
         Parameters:
         - fact_name (str): The name of the fact to check.
 
         Returns:
-        - pd.DataFrame: DataFrame with symbols and their reporting status for the given fact.
+        - pd.DataFrame: DataFrame with symbols, their reporting status, and the percentage of filings with the fact.
         """
         query = f"""
         WITH reporting_symbols AS (
-            SELECT DISTINCT symbol_id
+            SELECT symbol_id,
+                   COUNT(DISTINCT filed_date_id) AS fact_count
             FROM financials.company_facts
             WHERE fact_name = $1
+            GROUP BY symbol_id
+        ),
+        total_filings AS (
+            SELECT symbol_id,
+                   COUNT(DISTINCT filed_date_id) AS total_count
+            FROM financials.company_facts
+            GROUP BY symbol_id
         )
         SELECT s.symbol,
-               CASE WHEN rs.symbol_id IS NOT NULL THEN 'Reported' ELSE 'Not Reported' END AS reporting_status
+               CASE WHEN rs.symbol_id IS NOT NULL THEN 'Reported' ELSE 'Not Reported' END AS reporting_status,
+               COALESCE((rs.fact_count * 100.0 / tf.total_count), 0) AS filing_percentage
         FROM metadata.symbols s
         LEFT JOIN reporting_symbols rs ON s.symbol_id = rs.symbol_id
+        LEFT JOIN total_filings tf ON s.symbol_id = tf.symbol_id
         ORDER BY reporting_status, s.symbol;
         """
         return await self.db_connector.run_query(query, params=[fact_name], return_df=True)
