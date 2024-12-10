@@ -1,5 +1,6 @@
 import pandas as pd
 from database.async_database import db_connector
+import asyncio
 
 
 class FactFrequencyAnalyzer:
@@ -33,7 +34,7 @@ class FactFrequencyAnalyzer:
 
 
 analyzer = FactFrequencyAnalyzer()
-import asyncio
+
 
 async def main():
     await analyzer.db_connector.initialize()
@@ -43,4 +44,7 @@ async def main():
     finally:
         await analyzer.db_connector.close()
 
-asyncio.run(main())
+    return result
+
+
+df = asyncio.run(main())
