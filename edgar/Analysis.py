@@ -58,8 +58,8 @@ async def main():
     print("Distinct Fact Names:", analyzer.fact_names)
 
     try:
-        frequency_result = await analyzer.analyze_fact_frequency()
-        print("Fact Frequency Analysis:\n", frequency_result)
+        result = await analyzer.analyze_fact_frequency()
+        print("Fact Frequency Analysis:\n", result)
 
         # Example usage of analyze_fact_reporting
         fact_name = next(iter(analyzer.fact_names))  # Just an example, using the first fact name
