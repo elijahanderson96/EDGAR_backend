@@ -33,4 +33,14 @@ class FactFrequencyAnalyzer:
 
 
 analyzer = FactFrequencyAnalyzer()
-result = analyzer.analyze_fact_frequency()
+import asyncio
+
+async def main():
+    await analyzer.db_connector.initialize()
+    try:
+        result = await analyzer.analyze_fact_frequency()
+        print(result)
+    finally:
+        await analyzer.db_connector.close()
+
+asyncio.run(main())
