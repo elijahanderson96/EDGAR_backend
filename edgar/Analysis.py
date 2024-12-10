@@ -24,6 +24,30 @@ class FactFrequencyAnalyzer:
         self.fact_names = set(result['fact_name'])
         return self.fact_names
 
+    async def check_fact_distribution(self, fact_name: str) -> pd.DataFrame:
+        """
+        Check which symbols have reported a specific fact and which have not.
+
+        Parameters:
+        - fact_name (str): The name of the fact to check.
+
+        Returns:
+        - pd.DataFrame: DataFrame with symbols and their reporting status for the given fact.
+        """
+        query = f"""
+        WITH reporting_symbols AS (
+            SELECT DISTINCT symbol_id
+            FROM financials.company_facts
+            WHERE fact_name = $1
+        )
+        SELECT s.symbol,
+               CASE WHEN rs.symbol_id IS NOT NULL THEN 'Reported' ELSE 'Not Reported' END AS reporting_status
+        FROM metadata.symbols s
+        LEFT JOIN reporting_symbols rs ON s.symbol_id = rs.symbol_id
+        ORDER BY reporting_status, s.symbol;
+        """
+        return await self.db_connector.run_query(query, params=[fact_name], return_df=True)
+
     async def analyze_fact_frequency(self) -> pd.DataFrame:
         """
         Analyze the frequency of each fact name being reported across all symbols.
