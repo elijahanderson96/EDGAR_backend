@@ -32,7 +32,15 @@ async def get_latest_facts():
                 detail="No data found for the specified fact names."
             )
 
-        return result.to_dict(orient="records")
+        # Pivot the DataFrame to have one row per symbol and each fact_name as a column
+        pivoted_result = result.pivot_table(
+            index='symbol',
+            columns='fact_name',
+            values='value',
+            aggfunc='first'
+        ).reset_index()
+
+        return pivoted_result.to_dict(orient="records")
 
     except Exception as e:
         logging.error(f"Error fetching latest facts: {e}")
