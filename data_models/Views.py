@@ -127,3 +127,10 @@ class MaterializedFinancialsViews:
             s.symbol, f.fact_name;
         """
         await db_connector.run_query(query, return_df=False)
+
+async def main():
+    await MaterializedFinancialsViews.generate_latest_facts_view()
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
