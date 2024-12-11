@@ -1,4 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
+from fastapi_cache.decorator import cache
+from datetime import timedelta
 from database.async_database import db_connector
 import logging
 
@@ -7,70 +11,20 @@ home_router = APIRouter()
 logging.basicConfig(level=logging.INFO)
 
 
+@home_router.on_event("startup")
+async def startup():
+    FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
+
 @home_router.get("/facts", tags=["Facts"])
+@cache(expire=86400)  # Cache for 24 hours
 async def get_latest_facts():
     """
     Fetches the latest data for specified fact names across all symbols.
     """
-    fact_names = [
-        "Assets",
-        "LiabilitiesAndStockholdersEquity",
-        "EntityCommonStockSharesOutstanding",
-        "CashAndCashEquivalentsAtCarryingValue",
-        "RetainedEarningsAccumulatedDeficit",
-        "AssetsCurrent",
-        "LiabilitiesCurrent",
-        "NetIncomeLoss",
-        "StockholdersEquity",
-        "PropertyPlantAndEquipmentNet",
-        "NetCashProvidedByUsedInOperatingActivities",
-        "NetCashProvidedByUsedInFinancingActivities",
-        "CommonStockValue",
-        "IncomeTaxExpenseBenefit",
-        "NetCashProvidedByUsedInInvestingActivities",
-        "OperatingIncomeLoss",
-        "EarningsPerShareBasic",
-        "CommonStockSharesAuthorized",
-        "CommonStockParOrStatedValuePerShare",
-        "CommonStockSharesIssued",
-        "ShareBasedCompensation",
-        "AccumulatedOtherComprehensiveIncomeLossNetOfTax",
-        "EarningsPerShareDiluted",
-        "WeightedAverageNumberOfSharesOutstandingBasic",
-        "AccountsPayableCurrent",
-        "Liabilities"
-    ]
 
     try:
-        query = f"""
-        WITH latest_filing_dates AS (
-            SELECT 
-                symbol_id, 
-                MAX(filed_date_id) AS latest_filed_date_id
-            FROM 
-                financials.company_facts
-            GROUP BY 
-                symbol_id
-        )
-        SELECT 
-            s.symbol,
-            f.fact_name,
-            f.value,
-            d.date AS filing_date
-        FROM 
-            financials.company_facts f
-        JOIN 
-            latest_filing_dates lfd ON f.symbol_id = lfd.symbol_id AND f.filed_date_id = lfd.latest_filed_date_id
-        JOIN 
-            metadata.symbols s ON s.symbol_id = f.symbol_id
-        JOIN 
-            metadata.dates d ON d.date_id = f.filed_date_id
-        WHERE 
-            f.fact_name = ANY($1)
-        ORDER BY 
-            s.symbol, f.fact_name;
-        """
-        result = await db_connector.run_query(query, params=(fact_names,))
+        query = "SELECT * FROM financials.latest_company_facts;"
+        result = await db_connector.run_query(query)
 
         if result.empty:
             raise HTTPException(
