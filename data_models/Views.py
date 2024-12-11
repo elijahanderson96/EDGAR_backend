@@ -2,6 +2,7 @@ import logging
 import time
 from database.async_database import db_connector
 
+
 def log_execution_time(func):
     async def wrapper(*args, **kwargs):
         logger = logging.getLogger(__name__)
@@ -11,6 +12,7 @@ def log_execution_time(func):
         end_time = time.time()
         logger.info(f"Finished '{func.__name__}' execution in {end_time - start_time:.2f} seconds.")
         return result
+
     return wrapper
 
 
@@ -19,7 +21,7 @@ class MaterializedFinancialsViews:
     @log_execution_time
     async def generate_latest_facts_view():
         query = """
-        CREATE MATERIALIZED VIEW latest_company_facts AS
+        CREATE MATERIALIZED VIEW financials.latest_company_facts AS
         WITH latest_filing_dates AS (
             SELECT
                 symbol_id,
