@@ -1,5 +1,6 @@
 from database.async_database import db_connector
 
+
 class MaterializedFinancialsViews:
     @staticmethod
     async def generate_latest_facts_view():
@@ -87,4 +88,4 @@ class MaterializedFinancialsViews:
         ORDER BY
             s.symbol, f.fact_name;
         """
-        await db_connector.run_query(query)
+        await db_connector.run_query(query, return_df=False)
