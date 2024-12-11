@@ -7,6 +7,84 @@ home_router = APIRouter()
 logging.basicConfig(level=logging.INFO)
 
 
+@home_router.get("/facts", tags=["Facts"])
+async def get_latest_facts():
+    """
+    Fetches the latest data for specified fact names across all symbols.
+    """
+    fact_names = [
+        "Assets",
+        "LiabilitiesAndStockholdersEquity",
+        "EntityCommonStockSharesOutstanding",
+        "CashAndCashEquivalentsAtCarryingValue",
+        "RetainedEarningsAccumulatedDeficit",
+        "AssetsCurrent",
+        "LiabilitiesCurrent",
+        "NetIncomeLoss",
+        "StockholdersEquity",
+        "PropertyPlantAndEquipmentNet",
+        "NetCashProvidedByUsedInOperatingActivities",
+        "NetCashProvidedByUsedInFinancingActivities",
+        "CommonStockValue",
+        "IncomeTaxExpenseBenefit",
+        "NetCashProvidedByUsedInInvestingActivities",
+        "OperatingIncomeLoss",
+        "EarningsPerShareBasic",
+        "CommonStockSharesAuthorized",
+        "CommonStockParOrStatedValuePerShare",
+        "CommonStockSharesIssued",
+        "ShareBasedCompensation",
+        "AccumulatedOtherComprehensiveIncomeLossNetOfTax",
+        "EarningsPerShareDiluted",
+        "WeightedAverageNumberOfSharesOutstandingBasic",
+        "AccountsPayableCurrent",
+        "Liabilities"
+    ]
+
+    try:
+        query = f"""
+        WITH latest_filing_dates AS (
+            SELECT 
+                symbol_id, 
+                MAX(filing_date_id) AS latest_filing_date_id
+            FROM 
+                financials.facts
+            GROUP BY 
+                symbol_id
+        )
+        SELECT 
+            s.symbol,
+            f.fact_name,
+            f.value,
+            d.date AS filing_date
+        FROM 
+            financials.facts f
+        JOIN 
+            latest_filing_dates lfd ON f.symbol_id = lfd.symbol_id AND f.filing_date_id = lfd.latest_filing_date_id
+        JOIN 
+            metadata.symbols s ON s.symbol_id = f.symbol_id
+        JOIN 
+            metadata.dates d ON d.date_id = f.filing_date_id
+        WHERE 
+            f.fact_name = ANY(%s)
+        ORDER BY 
+            s.symbol, f.fact_name;
+        """
+        result = await db_connector.run_query(query, params=(fact_names,))
+
+        if result.empty:
+            raise HTTPException(
+                status_code=404,
+                detail="No data found for the specified fact names."
+            )
+
+        return result.to_dict(orient="records")
+
+    except Exception as e:
+        logging.error(f"Error fetching latest facts: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch latest facts.")
+
+
 @home_router.get("/home", tags=["Home"])
 async def get_daily_stock_changes():
     """
