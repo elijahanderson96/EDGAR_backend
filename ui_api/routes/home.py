@@ -39,7 +39,7 @@ async def get_latest_facts():
             values='value',
             aggfunc='first'
         ).reset_index()
-
+        print(pivoted_result)
         return pivoted_result.to_dict(orient="records")
 
     except Exception as e:
