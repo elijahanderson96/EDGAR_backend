@@ -1,8 +1,7 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
 from fastapi_cache.decorator import cache
-from datetime import timedelta
 from database.async_database import db_connector
 import logging
 
@@ -14,6 +13,7 @@ logging.basicConfig(level=logging.INFO)
 @home_router.on_event("startup")
 async def startup():
     FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
+
 
 @home_router.get("/facts", tags=["Facts"])
 @cache(expire=86400)  # Cache for 24 hours
