@@ -46,7 +46,7 @@ async def get_latest_facts():
         WITH latest_filing_dates AS (
             SELECT 
                 symbol_id, 
-                MAX(filing_date_id) AS latest_filing_date_id
+                MAX(filed_date_id) AS latest_filed_date_id
             FROM 
                 financials.company_facts
             GROUP BY 
@@ -60,11 +60,11 @@ async def get_latest_facts():
         FROM 
             financials.company_facts f
         JOIN 
-            latest_filing_dates lfd ON f.symbol_id = lfd.symbol_id AND f.filing_date_id = lfd.latest_filing_date_id
+            latest_filing_dates lfd ON f.symbol_id = lfd.symbol_id AND f.filed_date_id = lfd.latest_filed_date_id
         JOIN 
             metadata.symbols s ON s.symbol_id = f.symbol_id
         JOIN 
-            metadata.dates d ON d.date_id = f.filing_date_id
+            metadata.dates d ON d.date_id = f.filed_date_id
         WHERE 
             f.fact_name = ANY($1)
         ORDER BY 
