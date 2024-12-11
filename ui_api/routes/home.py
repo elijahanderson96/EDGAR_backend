@@ -39,7 +39,8 @@ async def get_latest_facts():
             values='value',
             aggfunc='first'
         ).reset_index()
-        print(pivoted_result)
+        # Replace NaN and infinite values with None
+        pivoted_result = pivoted_result.replace([float('inf'), float('-inf')], None).where(pivoted_result.notnull(), None)
         return pivoted_result.to_dict(orient="records")
 
     except Exception as e:
