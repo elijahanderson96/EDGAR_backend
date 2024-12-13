@@ -86,10 +86,10 @@ class FactFrequencyAnalyzer:
 
     async def get_common_stock_shares_outstanding(self) -> pd.DataFrame:
         """
-        Retrieve the most recent values of facts containing 'share' or 'stock' in their names for each symbol.
+        Retrieve the most recent value of 'EntityCommonStockSharesOutstanding' for each symbol.
 
         Returns:
-        - pd.DataFrame: DataFrame with symbols, fact names, their most recent values, filing dates, and end dates.
+        - pd.DataFrame: DataFrame with symbols, the fact name, its most recent value, filing date, and end date.
         """
         query = """
         WITH latest_facts AS (
@@ -99,7 +99,7 @@ class FactFrequencyAnalyzer:
                 MAX(filed_date_id) AS latest_filed_date_id,
                 MAX(end_date_id) AS latest_end_date_id
             FROM financials.company_facts
-            WHERE fact_name ILIKE '%share%' OR fact_name ILIKE '%stock%'
+            WHERE fact_name = 'EntityCommonStockSharesOutstanding'
             GROUP BY symbol_id, fact_name
         )
         SELECT s.symbol, cf.fact_name, cf.value, d_filed.date AS filing_date, d_end.date AS end_date
