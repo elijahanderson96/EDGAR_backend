@@ -92,21 +92,26 @@ class FactFrequencyAnalyzer:
         - pd.DataFrame: DataFrame with symbols, fact names, their most recent values, filing dates, and end dates.
         """
         query = """
+        WITH latest_facts AS (
+            SELECT
+                symbol_id,
+                fact_name,
+                MAX(filed_date_id) AS latest_filed_date_id,
+                MAX(end_date_id) AS latest_end_date_id
+            FROM financials.company_facts
+            WHERE fact_name ILIKE '%share%' OR fact_name ILIKE '%stock%'
+            GROUP BY symbol_id, fact_name
+        )
         SELECT s.symbol, cf.fact_name, cf.value, d_filed.date AS filing_date, d_end.date AS end_date
-        FROM financials.company_facts cf
+        FROM latest_facts lf
+        JOIN financials.company_facts cf
+            ON lf.symbol_id = cf.symbol_id
+            AND lf.fact_name = cf.fact_name
+            AND lf.latest_filed_date_id = cf.filed_date_id
+            AND lf.latest_end_date_id = cf.end_date_id
         JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
         JOIN metadata.dates d_filed ON cf.filed_date_id = d_filed.date_id
         JOIN metadata.dates d_end ON cf.end_date_id = d_end.date_id
-        WHERE cf.fact_name ILIKE '%share%' OR cf.fact_name ILIKE '%stock%'
-        AND (cf.filed_date_id, cf.end_date_id) = (
-            SELECT cf2.filed_date_id, MAX(cf2.end_date_id)
-            FROM financials.company_facts cf2
-            WHERE cf2.symbol_id = cf.symbol_id
-            AND (cf2.fact_name ILIKE '%share%' OR cf2.fact_name ILIKE '%stock%')
-            GROUP BY filed_date_id
-            ORDER BY MAX(cf.end_date_id) DESC
-            LIMIT 1
-        )
         ORDER BY s.symbol;
         """
         return await self.db_connector.run_query(query, return_df=True)
