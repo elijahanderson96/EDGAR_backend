@@ -96,13 +96,13 @@ class FactFrequencyAnalyzer:
         FROM financials.company_facts cf
         JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
         WHERE cf.fact_name = 'CommonStockSharesOutstanding'
-        AND (cf.filed_date_id, cf.end_date) = (
-            SELECT filed_date_id, MAX(end_date)
+        AND (cf.filed_date_id) = (
+            SELECT filed_date_id, MAX(end_date_id)
             FROM financials.company_facts
             WHERE symbol_id = cf.symbol_id
             AND fact_name = 'CommonStockSharesOutstanding'
             GROUP BY filed_date_id
-            ORDER BY MAX(end_date) DESC
+            ORDER BY MAX(cf.end_date_id) DESC
             LIMIT 1
         )
         ORDER BY s.symbol;
