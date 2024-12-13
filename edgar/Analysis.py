@@ -86,21 +86,23 @@ class FactFrequencyAnalyzer:
 
     async def get_common_stock_shares_outstanding(self) -> pd.DataFrame:
         """
-        Retrieve the most recent value of CommonStockSharesOutstanding for each symbol.
+        Retrieve the most recent values of facts containing 'share' or 'stock' in their names for each symbol.
 
         Returns:
-        - pd.DataFrame: DataFrame with symbols and their most recent CommonStockSharesOutstanding value.
+        - pd.DataFrame: DataFrame with symbols, fact names, their most recent values, filing dates, and end dates.
         """
         query = """
-        SELECT s.symbol, cf.value AS common_stock_shares_outstanding
+        SELECT s.symbol, cf.fact_name, cf.value, d_filed.date AS filing_date, d_end.date AS end_date
         FROM financials.company_facts cf
         JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
-        WHERE cf.fact_name = 'CommonStockSharesOutstanding'
-        AND (cf.filed_date_id) = (
+        JOIN metadata.dates d_filed ON cf.filed_date_id = d_filed.date_id
+        JOIN metadata.dates d_end ON cf.end_date_id = d_end.date_id
+        WHERE cf.fact_name ILIKE '%share%' OR cf.fact_name ILIKE '%stock%'
+        AND (cf.filed_date_id, cf.end_date_id) = (
             SELECT filed_date_id, MAX(end_date_id)
             FROM financials.company_facts
-            WHERE symbol_id = cf.symbol_id
-            AND fact_name = 'CommonStockSharesOutstanding'
+            WHERE cf2.symbol_id = cf.symbol_id
+            AND (cf2.fact_name ILIKE '%share%' OR cf2.fact_name ILIKE '%stock%')
             GROUP BY filed_date_id
             ORDER BY MAX(cf.end_date_id) DESC
             LIMIT 1
