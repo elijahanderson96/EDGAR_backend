@@ -99,8 +99,8 @@ class FactFrequencyAnalyzer:
         JOIN metadata.dates d_end ON cf.end_date_id = d_end.date_id
         WHERE cf.fact_name ILIKE '%share%' OR cf.fact_name ILIKE '%stock%'
         AND (cf.filed_date_id, cf.end_date_id) = (
-            SELECT filed_date_id, MAX(end_date_id)
-            FROM financials.company_facts
+            SELECT cf2.filed_date_id, MAX(cf2.end_date_id)
+            FROM financials.company_facts cf2
             WHERE cf2.symbol_id = cf.symbol_id
             AND (cf2.fact_name ILIKE '%share%' OR cf2.fact_name ILIKE '%stock%')
             GROUP BY filed_date_id
