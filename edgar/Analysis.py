@@ -83,3 +83,25 @@ class FactFrequencyAnalyzer:
         ORDER BY filing_percentage DESC, symbol_percentage DESC;
         """
         return await self.run_query(query, return_df=True)
+
+    async def get_common_stock_shares_outstanding(self) -> pd.DataFrame:
+        """
+        Retrieve the most recent value of CommonStockSharesOutstanding for each symbol.
+
+        Returns:
+        - pd.DataFrame: DataFrame with symbols and their most recent CommonStockSharesOutstanding value.
+        """
+        query = """
+        SELECT s.symbol, cf.value AS common_stock_shares_outstanding
+        FROM financials.company_facts cf
+        JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
+        WHERE cf.fact_name = 'CommonStockSharesOutstanding'
+        AND cf.filed_date_id = (
+            SELECT MAX(filed_date_id)
+            FROM financials.company_facts
+            WHERE symbol_id = cf.symbol_id
+            AND fact_name = 'CommonStockSharesOutstanding'
+        )
+        ORDER BY s.symbol;
+        """
+        return await self.db_connector.run_query(query, return_df=True)
