@@ -60,7 +60,15 @@ def analyze_keys(keys_list):
 
     return key_counts, subkey_counts
 
-def create_dataframes_from_facts(data_list):
+async def load_data_from_files(files):
+    """Load data from a list of JSON files asynchronously."""
+    data_list = []
+    for file in files:
+        async with aiofiles.open(file, 'r') as f:
+            content = await f.read()
+            data = json.loads(content)
+            data_list.append(data)
+    return data_list
     """Create dataframes for each fact grouping with detailed information."""
     fact_dataframes = {}
 
