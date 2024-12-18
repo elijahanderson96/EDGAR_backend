@@ -41,6 +41,20 @@ def process_files_in_directory(directory_path):
         keys_list.append(keys)
     return keys_list
 
-if __name__ == "__main__":
+def analyze_keys(keys_list):
+    """Analyze the keys and subkeys to provide counts."""
+    from collections import defaultdict
+
+    key_counts = defaultdict(int)
+    subkey_counts = defaultdict(lambda: defaultdict(int))
+
+    for keys in keys_list:
+        for key in keys:
+            parts = key.split('.')
+            key_counts[parts[0]] += 1
+            if len(parts) > 1:
+                subkey_counts[parts[0]][parts[1]] += 1
+
+    return key_counts, subkey_counts
     directory_path = "companyfacts"
     keys = process_files_in_directory(directory_path)
