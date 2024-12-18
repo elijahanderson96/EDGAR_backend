@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import aiofiles
 from multiprocessing import Pool, cpu_count
 from database.async_database import AsyncpgConnector
 from config.configs import dsn
