@@ -5,7 +5,7 @@ import aiofiles
 import pandas as pd
 from multiprocessing import Pool, cpu_count
 
-directory_path = "path/to/your/json/files"
+directory_path = "companyfacts"
 
 async def analyze_json_structure(file_path):
     """Analyze the JSON file to determine its structure."""
@@ -87,3 +87,5 @@ print("Fact DataFrames:")
 for group, df in fact_dataframes.items():
     print(f"Group: {group}")
     print(df.head())  # Print the first few rows of each dataframe
+
+ifrs_full = fact_dataframes['ifrs-full']
