@@ -14,7 +14,7 @@ async def analyze_json_structure(file_path):
         # Further analysis can be done here if needed
         return keys
 
-async def extract_keys(data, parent_key=''):
+def extract_keys(data, parent_key=''):
     """Recursively extract keys from a nested dictionary."""
     keys = []
     for key, value in data.items():
@@ -29,7 +29,7 @@ async def process_json_file(file_path):
     async with aiofiles.open(file_path, 'r') as file:
         content = await file.read()
         data = json.loads(content)
-        return extract_keys(data)
+        return await extract_keys(data)
 
 def process_files_in_directory(directory_path):
     """Process all JSON files in the specified directory using multiprocessing."""
