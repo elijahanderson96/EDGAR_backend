@@ -5,7 +5,7 @@ import aiofiles
 import pandas as pd
 from multiprocessing import Pool, cpu_count
 
-async def analyze_json_structure(file_path):
+directory_path = "path/to/your/json/files"
     """Analyze the JSON file to determine its structure."""
     async with aiofiles.open(file_path, 'r') as file:
         content = await file.read()
