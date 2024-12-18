@@ -14,12 +14,22 @@ async def analyze_json_structure(file_path):
         # Further analysis can be done here if needed
         return keys
 
+async def extract_keys(data, parent_key=''):
+    """Recursively extract keys from a nested dictionary."""
+    keys = []
+    for key, value in data.items():
+        full_key = f"{parent_key}.{key}" if parent_key else key
+        keys.append(full_key)
+        if isinstance(value, dict):
+            keys.extend(extract_keys(value, full_key))
+    return keys
+
 async def process_json_file(file_path):
     """Process a single JSON file and return its keys."""
     async with aiofiles.open(file_path, 'r') as file:
         content = await file.read()
         data = json.loads(content)
-        return data.keys()
+        return extract_keys(data)
 
 def process_files_in_directory(directory_path):
     """Process all JSON files in the specified directory using multiprocessing."""
