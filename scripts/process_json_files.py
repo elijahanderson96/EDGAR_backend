@@ -89,3 +89,5 @@ for group, df in fact_dataframes.items():
     print(df.head())  # Print the first few rows of each dataframe
 
 ifrs_full = fact_dataframes['ifrs-full']
+us_gaap = fact_dataframes['us-gaap']
+dei = fact_dataframes['dei']
