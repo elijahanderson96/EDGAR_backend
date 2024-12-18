@@ -60,22 +60,34 @@ def analyze_keys(keys_list):
 
     return key_counts, subkey_counts
 
-def create_dataframes_from_facts(keys_list):
-    """Create dataframes for each fact grouping."""
+def create_dataframes_from_facts(data_list):
+    """Create dataframes for each fact grouping with detailed information."""
     fact_dataframes = {}
-    
-    for keys in keys_list:
-        for key in keys:
-            parts = key.split('.')
-            if parts[0] == 'facts' and len(parts) > 1:
-                fact_group = parts[1]
-                if fact_group not in fact_dataframes:
-                    fact_dataframes[fact_group] = []
-                fact_dataframes[fact_group].append(key)
 
-    # Convert lists to DataFrames
-    for group, keys in fact_dataframes.items():
-        fact_dataframes[group] = pd.DataFrame(keys, columns=['Key'])
+    for data in data_list:
+        facts = data.get('facts', {})
+        for fact_group, fact_details in facts.items():
+            if fact_group not in fact_dataframes:
+                fact_dataframes[fact_group] = []
+
+            for fact_name, fact_info in fact_details.items():
+                value = fact_info.get('value')
+                label = fact_info.get('label')
+                description = fact_info.get('description')
+                units = fact_info.get('units', {}).get('currency')
+
+                fact_dataframes[fact_group].append({
+                    'Fact Name': fact_name,
+                    'Value': value,
+                    'Label': label,
+                    'Description': description,
+                    'Units': units
+                })
+
+    # Convert lists to DataFrames and transpose them for better readability
+    for group, facts in fact_dataframes.items():
+        df = pd.DataFrame(facts)
+        fact_dataframes[group] = df.transpose()
 
     return fact_dataframes
 keys = process_files_in_directory(directory_path)
