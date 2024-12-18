@@ -29,7 +29,7 @@ async def process_json_file(file_path):
     async with aiofiles.open(file_path, 'r') as file:
         content = await file.read()
         data = json.loads(content)
-        return await extract_keys(data)
+        return extract_keys(data)
 
 def process_files_in_directory(directory_path):
     """Process all JSON files in the specified directory using multiprocessing."""
