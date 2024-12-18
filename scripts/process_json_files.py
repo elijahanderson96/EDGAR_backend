@@ -81,3 +81,7 @@ key_counts, subkey_counts = analyze_keys(keys)
 fact_dataframes = create_dataframes_from_facts(keys)
 print("Key Counts:", key_counts)
 print("Subkey Counts:", subkey_counts)
+print("Fact DataFrames:")
+for group, df in fact_dataframes.items():
+    print(f"Group: {group}")
+    print(df.head())  # Print the first few rows of each dataframe
