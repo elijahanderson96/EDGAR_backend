@@ -56,8 +56,9 @@ def analyze_keys(keys_list):
                 subkey_counts[parts[0]][parts[1]] += 1
 
     return key_counts, subkey_counts
-    directory_path = "companyfacts"
-    keys = process_files_in_directory(directory_path)
-    key_counts, subkey_counts = analyze_keys(keys)
-    print("Key Counts:", key_counts)
-    print("Subkey Counts:", subkey_counts)
+
+directory_path = "companyfacts"
+keys = process_files_in_directory(directory_path)
+key_counts, subkey_counts = analyze_keys(keys)
+print("Key Counts:", key_counts)
+print("Subkey Counts:", subkey_counts)
