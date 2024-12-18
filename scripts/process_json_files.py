@@ -69,6 +69,7 @@ async def load_data_from_files(files):
             data = json.loads(content)
             data_list.append(data)
     return data_list
+def create_dataframes_from_facts(data_list):
     """Create dataframes for each fact grouping with detailed information."""
     fact_dataframes = {}
 
