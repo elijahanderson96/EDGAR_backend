@@ -90,9 +90,10 @@ def create_dataframes_from_facts(data_list):
         fact_dataframes[group] = df.transpose()
 
     return fact_dataframes
-keys = process_files_in_directory(directory_path)
+keys, files = process_files_in_directory(directory_path)
 key_counts, subkey_counts = analyze_keys(keys)
-fact_dataframes = create_dataframes_from_facts(keys)
+data_list = asyncio.run(load_data_from_files(files))
+fact_dataframes = create_dataframes_from_facts(data_list)
 print("Key Counts:", key_counts)
 print("Subkey Counts:", subkey_counts)
 print("Fact DataFrames:")
