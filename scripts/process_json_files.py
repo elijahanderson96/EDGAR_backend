@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import aiofiles
+import pandas as pd
 from multiprocessing import Pool, cpu_count
 
 async def analyze_json_structure(file_path):
@@ -57,8 +58,26 @@ def analyze_keys(keys_list):
 
     return key_counts, subkey_counts
 
-directory_path = "companyfacts"
+def create_dataframes_from_facts(keys_list):
+    """Create dataframes for each fact grouping."""
+    fact_dataframes = {}
+    
+    for keys in keys_list:
+        for key in keys:
+            parts = key.split('.')
+            if parts[0] == 'facts' and len(parts) > 1:
+                fact_group = parts[1]
+                if fact_group not in fact_dataframes:
+                    fact_dataframes[fact_group] = []
+                fact_dataframes[fact_group].append(key)
+
+    # Convert lists to DataFrames
+    for group, keys in fact_dataframes.items():
+        fact_dataframes[group] = pd.DataFrame(keys, columns=['Key'])
+
+    return fact_dataframes
 keys = process_files_in_directory(directory_path)
 key_counts, subkey_counts = analyze_keys(keys)
+fact_dataframes = create_dataframes_from_facts(keys)
 print("Key Counts:", key_counts)
 print("Subkey Counts:", subkey_counts)
