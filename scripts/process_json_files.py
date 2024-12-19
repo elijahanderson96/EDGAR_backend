@@ -2,7 +2,6 @@ import os
 import json
 import asyncio
 import aiofiles
-import pandas as pd
 from multiprocessing import Pool, cpu_count
 
 directory_path = "companyfacts"
@@ -77,51 +76,10 @@ async def load_data_from_files(files):
     return data_list
 
 
-def create_dataframes_from_facts(data_list):
-    """Create separate dataframes for values and metadata of each fact grouping."""
-    value_dataframes = {}
-    metadata_dataframes = {}
-
-    for data in data_list:
-        facts = data.get('facts', {})
-        for fact_group, fact_details in facts.items():
-            if fact_group not in value_dataframes:
-                value_dataframes[fact_group] = []
-                metadata_dataframes[fact_group] = []
-
-            for fact_name, fact_info in fact_details.items():
-                values = fact_info.get('values', [])
-                label = fact_info.get('label')
-                description = fact_info.get('description')
-                units = fact_info.get('units', {}).get('currency')
-
-                # Append values to the value dataframe
-                for value in values:
-                    value_dataframes[fact_group].append({
-                        'Fact Name': fact_name,
-                        'Value': value
-                    })
-
-                # Append metadata to the metadata dataframe
-                metadata_dataframes[fact_group].append({
-                    'Fact Name': fact_name,
-                    'Label': label,
-                    'Description': description,
-                    'Units': units
-                })
-
-    # Convert lists to DataFrames
-    for group in value_dataframes.keys():
-        value_dataframes[group] = pd.DataFrame(value_dataframes[group])
-        metadata_dataframes[group] = pd.DataFrame(metadata_dataframes[group])
-
-    return value_dataframes, metadata_dataframes
 
 
 keys_list, files = process_files_in_directory(directory_path)
 key_counts, subkey_counts = analyze_keys(keys_list)
-data_list = asyncio.run(load_data_from_files(files))
-fact_dataframes = create_dataframes_from_facts(data_list)
 
 print("Key Counts:", key_counts)
 print("Subkey Counts:", subkey_counts)
