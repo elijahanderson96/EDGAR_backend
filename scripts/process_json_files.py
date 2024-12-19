@@ -70,35 +70,44 @@ async def load_data_from_files(files):
             data_list.append(data)
     return data_list
 def create_dataframes_from_facts(data_list):
-    """Create dataframes for each fact grouping with detailed information."""
-    fact_dataframes = {}
+    """Create separate dataframes for values and metadata of each fact grouping."""
+    value_dataframes = {}
+    metadata_dataframes = {}
 
     for data in data_list:
         facts = data.get('facts', {})
         for fact_group, fact_details in facts.items():
-            if fact_group not in fact_dataframes:
-                fact_dataframes[fact_group] = []
+            if fact_group not in value_dataframes:
+                value_dataframes[fact_group] = []
+                metadata_dataframes[fact_group] = []
 
             for fact_name, fact_info in fact_details.items():
-                value = fact_info.get('value')
+                values = fact_info.get('values', [])
                 label = fact_info.get('label')
                 description = fact_info.get('description')
                 units = fact_info.get('units', {}).get('currency')
 
-                fact_dataframes[fact_group].append({
+                # Append values to the value dataframe
+                for value in values:
+                    value_dataframes[fact_group].append({
+                        'Fact Name': fact_name,
+                        'Value': value
+                    })
+
+                # Append metadata to the metadata dataframe
+                metadata_dataframes[fact_group].append({
                     'Fact Name': fact_name,
-                    'Value': value,
                     'Label': label,
                     'Description': description,
                     'Units': units
                 })
 
-    # Convert lists to DataFrames and transpose them for better readability
-    for group, facts in fact_dataframes.items():
-        df = pd.DataFrame(facts)
-        fact_dataframes[group] = df.transpose()
+    # Convert lists to DataFrames
+    for group in value_dataframes.keys():
+        value_dataframes[group] = pd.DataFrame(value_dataframes[group])
+        metadata_dataframes[group] = pd.DataFrame(metadata_dataframes[group])
 
-    return fact_dataframes
+    return value_dataframes, metadata_dataframes
 keys, files = process_files_in_directory(directory_path)
 key_counts, subkey_counts = analyze_keys(keys)
 data_list = asyncio.run(load_data_from_files(files))
