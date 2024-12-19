@@ -30,11 +30,19 @@ def extract_keys(data, parent_key=''):
 
 
 async def process_json_file(file_path):
-    """Process a single JSON file and return its keys."""
+    """Process a single JSON file and return its keys and fact groupings."""
     async with aiofiles.open(file_path, 'r') as file:
         content = await file.read()
         data = json.loads(content)
-        return extract_keys(data)
+        keys = extract_keys(data)
+        
+        # Extract fact groupings
+        fact_groupings = {}
+        facts = data.get('facts', {})
+        for group, details in facts.items():
+            fact_groupings[group] = list(details.keys())
+        
+        return keys, fact_groupings
 
 
 def process_files_in_directory(directory_path):
@@ -42,10 +50,12 @@ def process_files_in_directory(directory_path):
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
     files = files[:100]  # Limit to the first 100 files
     keys_list = []
+    fact_groupings_list = []
     for file in files:
-        keys = asyncio.run(process_json_file(file))
+        keys, fact_groupings = asyncio.run(process_json_file(file))
         keys_list.append(keys)
-    return keys_list, files
+        fact_groupings_list.append(fact_groupings)
+    return keys_list, fact_groupings_list, files
 
 
 def analyze_keys(keys_list):
@@ -78,9 +88,21 @@ async def load_data_from_files(files):
 
 
 
-keys_list, files = process_files_in_directory(directory_path)
+keys_list, fact_groupings_list, files = process_files_in_directory(directory_path)
 key_counts, subkey_counts = analyze_keys(keys_list)
 
+# Analyze fact groupings
+fact_group_counts = defaultdict(int)
+fact_counts = defaultdict(lambda: defaultdict(int))
+
+for fact_groupings in fact_groupings_list:
+    for group, facts in fact_groupings.items():
+        fact_group_counts[group] += 1
+        for fact in facts:
+            fact_counts[group][fact] += 1
+
 print("Key Counts:", key_counts)
+print("Fact Group Counts:", fact_group_counts)
+print("Fact Counts:", fact_counts)
 print("Subkey Counts:", subkey_counts)
 
