@@ -46,7 +46,7 @@ def process_files_in_directory(directory_path):
     for file in files:
         keys = asyncio.run(process_json_file(file))
         keys_list.append(keys)
-    return keys_list
+    return keys_list, files
 
 
 def analyze_keys(keys_list):
@@ -118,7 +118,7 @@ def create_dataframes_from_facts(data_list):
     return value_dataframes, metadata_dataframes
 
 
-keys, files = process_files_in_directory(directory_path)
+keys_list, files = process_files_in_directory(directory_path)
 key_counts, subkey_counts = analyze_keys(keys)
 data_list = asyncio.run(load_data_from_files(files))
 fact_dataframes = create_dataframes_from_facts(data_list)
