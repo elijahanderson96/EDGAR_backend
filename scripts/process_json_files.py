@@ -59,7 +59,7 @@ async def process_json_file(file_path):
 def process_files_in_directory(directory_path):
     """Process all JSON files in the specified directory using multiprocessing."""
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
-    files = files[:100]  # Limit to the first 100 files
+    files = files[:2]  # Limit to the first 100 files
     keys_list = []
     for file in files:
         keys, fact_groupings = asyncio.run(process_json_file(file))
