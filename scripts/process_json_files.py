@@ -119,7 +119,7 @@ def create_dataframes_from_facts(data_list):
 
 
 keys_list, files = process_files_in_directory(directory_path)
-key_counts, subkey_counts = analyze_keys(keys)
+key_counts, subkey_counts = analyze_keys(keys_list)
 data_list = asyncio.run(load_data_from_files(files))
 fact_dataframes = create_dataframes_from_facts(data_list)
 
