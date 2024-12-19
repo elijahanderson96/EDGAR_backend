@@ -7,6 +7,7 @@ from multiprocessing import Pool, cpu_count
 
 directory_path = "companyfacts"
 
+
 async def analyze_json_structure(file_path):
     """Analyze the JSON file to determine its structure."""
     async with aiofiles.open(file_path, 'r') as file:
@@ -16,6 +17,7 @@ async def analyze_json_structure(file_path):
         keys = data.keys()
         # Further analysis can be done here if needed
         return keys
+
 
 def extract_keys(data, parent_key=''):
     """Recursively extract keys from a nested dictionary."""
@@ -27,12 +29,14 @@ def extract_keys(data, parent_key=''):
             keys.extend(extract_keys(value, full_key))
     return keys
 
+
 async def process_json_file(file_path):
     """Process a single JSON file and return its keys."""
     async with aiofiles.open(file_path, 'r') as file:
         content = await file.read()
         data = json.loads(content)
         return extract_keys(data)
+
 
 def process_files_in_directory(directory_path):
     """Process all JSON files in the specified directory using multiprocessing."""
@@ -43,6 +47,7 @@ def process_files_in_directory(directory_path):
         keys = asyncio.run(process_json_file(file))
         keys_list.append(keys)
     return keys_list
+
 
 def analyze_keys(keys_list):
     """Analyze the keys and subkeys to provide counts."""
@@ -60,6 +65,7 @@ def analyze_keys(keys_list):
 
     return key_counts, subkey_counts
 
+
 async def load_data_from_files(files):
     """Load data from a list of JSON files asynchronously."""
     data_list = []
@@ -69,6 +75,8 @@ async def load_data_from_files(files):
             data = json.loads(content)
             data_list.append(data)
     return data_list
+
+
 def create_dataframes_from_facts(data_list):
     """Create separate dataframes for values and metadata of each fact grouping."""
     value_dataframes = {}
@@ -108,6 +116,8 @@ def create_dataframes_from_facts(data_list):
         metadata_dataframes[group] = pd.DataFrame(metadata_dataframes[group])
 
     return value_dataframes, metadata_dataframes
+
+
 keys, files = process_files_in_directory(directory_path)
 key_counts, subkey_counts = analyze_keys(keys)
 data_list = asyncio.run(load_data_from_files(files))
