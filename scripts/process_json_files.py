@@ -125,11 +125,4 @@ fact_dataframes = create_dataframes_from_facts(data_list)
 
 print("Key Counts:", key_counts)
 print("Subkey Counts:", subkey_counts)
-print("Fact DataFrames:")
-for group, df in fact_dataframes.items():
-    print(f"Group: {group}")
-    print(df.head())  # Print the first few rows of each dataframe
 
-ifrs_full = fact_dataframes['ifrs-full']
-us_gaap = fact_dataframes['us-gaap']
-dei = fact_dataframes['dei']
