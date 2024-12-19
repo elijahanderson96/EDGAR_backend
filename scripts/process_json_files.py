@@ -9,16 +9,6 @@ from multiprocessing import Pool, cpu_count
 directory_path = "companyfacts"
 
 
-async def analyze_json_structure(file_path):
-    """Analyze the JSON file to determine its structure."""
-    async with aiofiles.open(file_path, 'r') as file:
-        content = await file.read()
-        data = json.loads(content)
-        # Assuming the JSON structure is a dictionary
-        keys = data.keys()
-        # Further analysis can be done here if needed
-        return keys
-
 
 def extract_keys(data, parent_key=''):
     """Recursively extract keys from a nested dictionary."""
@@ -77,12 +67,14 @@ def process_files_in_directory(directory_path):
     return keys_list, files
 
 
-async def load_data_from_files(files):
-    """Load data from a list of JSON files asynchronously."""
-    data_list = []
+if __name__ == "__main__":
+    # Example usage
+    directory_path = "companyfacts"
+    files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
+    
+    # Process each file and generate dataframes
     for file in files:
-        async with aiofiles.open(file, 'r') as f:
-            content = await f.read()
-            data = json.loads(content)
-            data_list.append(data)
-    return data_list
+        dataframes = asyncio.run(process_json_file(file))
+        for principle, df in dataframes.items():
+            print(f"Accounting Principle: {principle}")
+            print(df.head())  # Display the first few rows of each dataframe
