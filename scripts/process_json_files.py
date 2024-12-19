@@ -57,14 +57,21 @@ async def process_json_file(file_path):
 
 
 def process_files_in_directory(directory_path):
-    """Process all JSON files in the specified directory using multiprocessing."""
+    """Process all JSON files in the specified directory and aggregate dataframes for each principle."""
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
-    files = files[:2]  # Limit to the first 100 files
-    keys_list = []
+    
+    aggregated_dataframes = defaultdict(list)
+    
     for file in files:
-        keys, fact_groupings = asyncio.run(process_json_file(file))
-        keys_list.append(keys)
-    return keys_list, files
+        dataframes = asyncio.run(process_json_file(file))
+        for principle, df in dataframes.items():
+            aggregated_dataframes[principle].append(df)
+    
+    # Concatenate dataframes for each principle
+    for principle in aggregated_dataframes:
+        aggregated_dataframes[principle] = pd.concat(aggregated_dataframes[principle], ignore_index=True)
+    
+    return aggregated_dataframes
 
 
 if __name__ == "__main__":
@@ -72,9 +79,9 @@ if __name__ == "__main__":
     directory_path = "companyfacts"
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
     
-    # Process each file and generate dataframes
-    for file in files:
-        dataframes = asyncio.run(process_json_file(file))
-        for principle, df in dataframes.items():
+    # Process files and aggregate dataframes
+    aggregated_dataframes = process_files_in_directory(directory_path)
+    
+    for principle, df in aggregated_dataframes.items():
             print(f"Accounting Principle: {principle}")
             print(df.head())  # Display the first few rows of each dataframe
