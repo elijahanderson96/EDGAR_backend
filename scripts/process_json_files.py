@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import aiofiles
+import pandas as pd
 from collections import defaultdict
 from multiprocessing import Pool, cpu_count
 
@@ -31,12 +32,38 @@ def extract_keys(data, parent_key=''):
 
 
 async def process_json_file(file_path):
-    """Process a single JSON file and return its keys and fact groupings."""
+    """Process a single JSON file and return dataframes for each accounting principle."""
     async with aiofiles.open(file_path, 'r') as file:
         content = await file.read()
         data = json.loads(content)
-        keys = extract_keys(data)
-        return keys
+        
+        # Extract CIK and entity name
+        cik = str(data.get("cik", "")).zfill(10)
+        entity_name = data.get("entityName", "")
+        
+        # Extract facts
+        facts = data.get("facts", {})
+        
+        # Create dataframes for each accounting principle
+        dataframes = {}
+        for principle, facts_dict in facts.items():
+            records = []
+            for fact_name, fact_details in facts_dict.items():
+                units = fact_details.get("units", {})
+                for unit, time_series in units.items():
+                    for entry in time_series:
+                        record = {
+                            "cik": cik,
+                            "entity_name": entity_name,
+                            "fact_name": fact_name,
+                            "unit": unit,
+                            **entry
+                        }
+                        records.append(record)
+            df = pd.DataFrame(records)
+            dataframes[principle] = df
+        
+        return dataframes
 
 
 def process_files_in_directory(directory_path):
