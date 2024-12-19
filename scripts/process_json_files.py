@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import aiofiles
+from collections import defaultdict
 from multiprocessing import Pool, cpu_count
 
 directory_path = "companyfacts"
