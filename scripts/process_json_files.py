@@ -18,10 +18,10 @@ async def insert_dataframe_to_db(df):
     dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
 
     # Merge dataframes to resolve foreign keys
-    df = df.merge(symbols_df, left_on='cik', right_on='cik', how='left')
-    df = df.merge(dates_df, left_on='start', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'})
-    df = df.merge(dates_df, left_on='end', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'})
-    df = df.merge(dates_df, left_on='filed', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
+    df = df.merge(symbols_df, on='cik', how='left') \
+           .merge(dates_df, left_on='start', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'}) \
+           .merge(dates_df, left_on='end', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'}) \
+           .merge(dates_df, left_on='filed', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
 
     # Select relevant columns for insertion
     df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fy', 'fp', 'form', 'val', 'accn']]
