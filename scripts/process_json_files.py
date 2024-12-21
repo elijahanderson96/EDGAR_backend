@@ -77,10 +77,12 @@ async def main(files):
     for file in files:
         dataframes = await process_json_file(file)
         all_dataframes.extend(dataframes.values())
+
+    return all_dataframes
     
-    if all_dataframes:
-        combined_df = pd.concat(all_dataframes, ignore_index=True)
-        await insert_dataframe_to_db(combined_df)
+    # if all_dataframes:
+    #     combined_df = pd.concat(all_dataframes, ignore_index=True)
+    #     await insert_dataframe_to_db(combined_df)
 
 
 if __name__ == "__main__":
@@ -88,4 +90,4 @@ if __name__ == "__main__":
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
     files = files[0:3]
 
-    asyncio.run(main(files))
+    dfs = asyncio.run(main(files))
