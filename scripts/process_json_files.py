@@ -11,31 +11,30 @@ from multiprocessing import Pool, cpu_count
 directory_path = "companyfacts"
 
 
-async def insert_dataframe_to_db(df, principle):
+async def insert_dataframe_to_db(df):
     """Insert a dataframe into the database."""
-    for _, row in df.iterrows():
-        query = """
-        INSERT INTO financials.company_facts (
-            symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
-            fiscal_year, fiscal_period, form, value, accn
-        ) VALUES (
-            (SELECT symbol_id FROM metadata.symbols WHERE cik = $1),
-            $2, $3, 
-            (SELECT date_id FROM metadata.dates WHERE date = $4),
-            (SELECT date_id FROM metadata.dates WHERE date = $5),
-            (SELECT date_id FROM metadata.dates WHERE date = $6),
-            $7, $8, $9, $10, $11
-        ) ON CONFLICT DO NOTHING;
-        """
-        await db_connector.run_query(
-            query,
-            params=[
-                row['cik'], row['fact_name'], row['unit'], row['start'],
-                row['end'], row['filed'], row['fy'], row['fp'], row['form'],
-                row['val'], row['accn']
-            ],
-            return_df=False
+    query = """
+    INSERT INTO financials.company_facts (
+        symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
+        fiscal_year, fiscal_period, form, value, accn
+    ) VALUES (
+        (SELECT symbol_id FROM metadata.symbols WHERE cik = $1),
+        $2, $3, 
+        (SELECT date_id FROM metadata.dates WHERE date = $4),
+        (SELECT date_id FROM metadata.dates WHERE date = $5),
+        (SELECT date_id FROM metadata.dates WHERE date = $6),
+        $7, $8, $9, $10, $11
+    ) ON CONFLICT DO NOTHING;
+    """
+    params = [
+        (
+            row['cik'], row['fact_name'], row['unit'], row['start'],
+            row['end'], row['filed'], row['fy'], row['fp'], row['form'],
+            row['val'], row['accn']
         )
+        for _, row in df.iterrows()
+    ]
+    await db_connector.run_query(query, params=params, return_df=False)
 
 
 # AI: If needed, please separate IO bound and CPU bound tasks, we are going to multiprocess this at some point.
@@ -74,12 +73,14 @@ async def process_json_file(file_path):
 
 
 async def main(files):
+    all_dataframes = []
     for file in files:
         dataframes = await process_json_file(file)
-        for principle, df in dataframes.items():
-            print(f"Accounting Principle: {principle}")
-            print(df.head())
-            await insert_dataframe_to_db(df, principle)
+        all_dataframes.extend(dataframes.values())
+    
+    if all_dataframes:
+        combined_df = pd.concat(all_dataframes, ignore_index=True)
+        await insert_dataframe_to_db(combined_df)
 
 
 if __name__ == "__main__":
