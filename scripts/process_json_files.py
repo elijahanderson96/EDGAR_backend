@@ -11,7 +11,7 @@ from multiprocessing import Pool, cpu_count
 directory_path = "companyfacts"
 
 
-async def insert_dataframe_to_db(df):
+async def insert_dataframe_to_db(df: pd.DataFrame):
     """Insert a dataframe into the database."""
     # Load symbols and dates tables into memory
     await db_connector.initialize()
