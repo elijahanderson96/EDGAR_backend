@@ -10,6 +10,7 @@ from multiprocessing import Pool, cpu_count
 
 directory_path = "companyfacts"
 
+
 async def insert_dataframe_to_db(df, principle):
     """Insert a dataframe into the database."""
     for _, row in df.iterrows():
@@ -44,12 +45,12 @@ async def process_json_file(file_path):
     async with aiofiles.open(file_path, 'r') as file:
         content = await file.read()
         data = json.loads(content)
-        
+
         cik = str(data.get("cik", "")).zfill(10)
         entity_name = data.get("entityName", "")
-        
+
         facts = data.get("facts", {})
-        
+
         dataframes = {}
         for principle, facts_dict in facts.items():
             records = []
@@ -68,7 +69,7 @@ async def process_json_file(file_path):
                         print(record)
             df = pd.DataFrame(records)
             dataframes[principle] = df
-        
+
         return dataframes
 
 
@@ -79,6 +80,7 @@ async def main(files):
             print(f"Accounting Principle: {principle}")
             print(df.head())
             await insert_dataframe_to_db(df, principle)
+
 
 if __name__ == "__main__":
     directory_path = "companyfacts"
