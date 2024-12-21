@@ -10,6 +10,32 @@ from multiprocessing import Pool, cpu_count
 
 directory_path = "companyfacts"
 
+async def insert_dataframe_to_db(df, principle):
+    """Insert a dataframe into the database."""
+    for _, row in df.iterrows():
+        query = """
+        INSERT INTO financials.company_facts (
+            symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
+            fiscal_year, fiscal_period, form, value, accn
+        ) VALUES (
+            (SELECT symbol_id FROM metadata.symbols WHERE cik = $1),
+            $2, $3, 
+            (SELECT date_id FROM metadata.dates WHERE date = $4),
+            (SELECT date_id FROM metadata.dates WHERE date = $5),
+            (SELECT date_id FROM metadata.dates WHERE date = $6),
+            $7, $8, $9, $10, $11
+        ) ON CONFLICT DO NOTHING;
+        """
+        await db_connector.run_query(
+            query,
+            params=[
+                row['cik'], row['fact_name'], row['unit'], row['start'],
+                row['end'], row['filed'], row['fy'], row['fp'], row['form'],
+                row['val'], row['accn']
+            ],
+            return_df=False
+        )
+
 
 # AI: If needed, please separate IO bound and CPU bound tasks, we are going to multiprocess this at some point.
 # If it's fine to have async mixed with CPI bound tasks you may leave as is. AI!
@@ -51,16 +77,12 @@ if __name__ == "__main__":
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
     files = files[0:3]
 
-    # AI: Please examine the README_NEW.md file to get a feel for the database schema, and use the async db_connector.run_query
-    # method to insert the individual dataframes within the compiled list of dfs (or if you think it's more performant
-    # you can insert them individually as they're processed. The current file creates a list of dataframes with the following columns:
-    # 'cik', 'entity_name', 'fact_name', 'unit', 'end', 'val', 'accn', 'fy', 'fp', 'form', 'filed', 'frame', 'start'.
-    # Rename columns as needed, and remove cik and entity_name for symbol_id. Add the unit column to the database setup.py script within company facts.
-    # AI!
-    dfs = []
+    asyncio.run(main(files))
+
+async def main(files):
     for file in files:
-        dataframes = asyncio.run(process_json_file(file))
-        dfs.append(dataframes)
+        dataframes = await process_json_file(file)
         for principle, df in dataframes.items():
             print(f"Accounting Principle: {principle}")
             print(df.head())
+            await insert_dataframe_to_db(df, principle)
