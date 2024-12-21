@@ -19,12 +19,12 @@ async def insert_dataframe_to_db(df):
     dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
     print(df.columns)
     # Merge dataframes to resolve foreign keys
-    df = df.merge(symbols_df, on='cik', how='left')
-    df = df.merge(dates_df, left_on='start_date', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'})
-    df = df.merge(dates_df, left_on='end_date', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'})
-    df = df.merge(dates_df, left_on='filed_date', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
-    print(df.columns)
-    print(df)
+    df_merged_symbols = df.merge(symbols_df, on='cik', how='left')
+    df_merged_start_date = df_merged_symbols.merge(dates_df, left_on='start_date', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'})
+    df_merged_end_date = df_merged_start_date.merge(dates_df, left_on='end_date', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'})
+    df_merged_filed_date = df_merged_end_date.merge(dates_df, left_on='filed_date', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
+    print(df_merged_filed_date.columns)
+    print(df_merged_filed_date)
     # Rename columns to match the database schema
     df = df.rename(columns={
         'fy': 'fiscal_year',
