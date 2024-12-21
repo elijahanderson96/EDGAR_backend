@@ -3,10 +3,10 @@ import json
 import asyncio
 import aiofiles
 import pandas as pd
+from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor
 
 from database.async_database import db_connector
-from collections import defaultdict
-from multiprocessing import Pool, cpu_count
 
 directory_path = "companyfacts"
 
@@ -96,11 +96,16 @@ async def process_json_file(file_path):
         return dataframes
 
 
+def process_file(file):
+    """Wrapper to call the async function from a sync context."""
+    return asyncio.run(process_json_file(file))
+
+
 async def main(files):
     all_dataframes = []
-    for file in files:
-        dataframes = await process_json_file(file)
-        all_dataframes.extend(dataframes.values())
+    with ProcessPoolExecutor(max_workers=cpu_count()) as executor:
+        for dataframes in tqdm(executor.map(process_file, files), total=len(files), desc="Processing files"):
+            all_dataframes.extend(dataframes.values())
 
     if all_dataframes:
         combined_df = pd.concat(all_dataframes, ignore_index=True)
@@ -111,6 +116,5 @@ async def main(files):
 if __name__ == "__main__":
     directory_path = "companyfacts"
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
-    files = files[5000:5002]
 
     df = asyncio.run(main(files))
