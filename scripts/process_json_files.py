@@ -20,9 +20,12 @@ async def insert_dataframe_to_db(df):
     print(df.columns)
     # Merge dataframes to resolve foreign keys
     df_merged_symbols = df.merge(symbols_df, on='cik', how='left')
-    df_merged_start_date = df_merged_symbols.merge(dates_df, left_on='start_date', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'})
-    df_merged_end_date = df_merged_start_date.merge(dates_df, left_on='end_date', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'})
-    df_merged_filed_date = df_merged_end_date.merge(dates_df, left_on='filed_date', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
+    df_merged_start_date = df_merged_symbols.merge(dates_df, left_on='start', right_on='date', how='left').rename(
+        columns={'date_id': 'start_date_id'})
+    df_merged_end_date = df.merge(dates_df, left_on='end', right_on='date').rename(
+        columns={'date_id': 'end_date_id'})
+    df_merged_filed_date = df_merged_end_date.merge(dates_df, left_on='filed', right_on='date', how='left').rename(
+        columns={'date_id': 'filed_date_id'})
     print(df_merged_filed_date.columns)
     print(df_merged_filed_date)
     # Rename columns to match the database schema
@@ -34,9 +37,9 @@ async def insert_dataframe_to_db(df):
         'accn': 'accn'
     })
 
-    # Select relevant columns for insertion
-    df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year',
-             'fiscal_period', 'form', 'value', 'accn']]
+    # # Select relevant columns for insertion
+    # df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year',
+    #          'fiscal_period', 'form', 'value', 'accn']]
     await db_connector.close()
     return df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date
     # Perform bulk insert
@@ -84,6 +87,7 @@ async def process_json_file(file_path):
                         records.append(record)
             df = pd.DataFrame(records)
             print(principle, len(df))
+            print(df.columns)
             dataframes[principle] = df
 
         return dataframes
@@ -97,7 +101,8 @@ async def main(files):
 
     if all_dataframes:
         combined_df = pd.concat(all_dataframes, ignore_index=True)
-        df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date = await insert_dataframe_to_db(combined_df)
+        df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date = await insert_dataframe_to_db(
+            combined_df)
 
     return all_dataframes, df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date
 
@@ -106,5 +111,7 @@ if __name__ == "__main__":
     directory_path = "companyfacts"
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
     files = files[0:3]
+    file = files[0]
 
-    dfs, dfs_altered = asyncio.run(main(files))
+    all_dataframes, df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date = asyncio.run(
+        main(files))
