@@ -24,7 +24,7 @@ async def insert_dataframe_to_db(df):
            .merge(dates_df, left_on='filed', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
 
     # Select relevant columns for insertion
-    df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fy', 'fp', 'form', 'val', 'accn']]
+    df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year', 'fiscal_period', 'form', 'value', 'accn']]
 
     # Perform bulk insert
     await db_connector.run_query(
