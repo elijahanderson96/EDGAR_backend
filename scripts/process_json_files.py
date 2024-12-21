@@ -13,28 +13,32 @@ directory_path = "companyfacts"
 
 async def insert_dataframe_to_db(df):
     """Insert a dataframe into the database."""
-    query = """
-    INSERT INTO financials.company_facts (
-        symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
-        fiscal_year, fiscal_period, form, value, accn
-    ) VALUES (
-        (SELECT symbol_id FROM metadata.symbols WHERE cik = $1),
-        $2, $3, 
-        (SELECT date_id FROM metadata.dates WHERE date = $4),
-        (SELECT date_id FROM metadata.dates WHERE date = $5),
-        (SELECT date_id FROM metadata.dates WHERE date = $6),
-        $7, $8, $9, $10, $11
-    ) ON CONFLICT DO NOTHING;
-    """
-    params = [
-        (
-            row['cik'], row['fact_name'], row['unit'], row['start'],
-            row['end'], row['filed'], row['fy'], row['fp'], row['form'],
-            row['val'], row['accn']
-        )
-        for _, row in df.iterrows()
-    ]
-    await db_connector.run_query(query, params=params, return_df=False)
+    # Load symbols and dates tables into memory
+    symbols_df = await db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
+    dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
+
+    # Merge dataframes to resolve foreign keys
+    df = df.merge(symbols_df, left_on='cik', right_on='cik', how='left')
+    df = df.merge(dates_df, left_on='start', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'})
+    df = df.merge(dates_df, left_on='end', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'})
+    df = df.merge(dates_df, left_on='filed', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
+
+    # Select relevant columns for insertion
+    df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fy', 'fp', 'form', 'val', 'accn']]
+
+    # Perform bulk insert
+    await db_connector.run_query(
+        """
+        INSERT INTO financials.company_facts (
+            symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
+            fiscal_year, fiscal_period, form, value, accn
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+        ) ON CONFLICT DO NOTHING;
+        """,
+        params=df.values.tolist(),
+        return_df=False
+    )
 
 
 # AI: If needed, please separate IO bound and CPU bound tasks, we are going to multiprocess this at some point.
