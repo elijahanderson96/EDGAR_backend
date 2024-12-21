@@ -5,6 +5,7 @@ import aiofiles
 import pandas as pd
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import cpu_count
 
 from database.async_database import db_connector
 
