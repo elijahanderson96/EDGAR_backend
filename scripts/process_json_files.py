@@ -20,9 +20,9 @@ async def insert_dataframe_to_db(df):
 
     # Merge dataframes to resolve foreign keys
     df = df.merge(symbols_df, on='cik', how='left') \
-        .merge(dates_df, left_on='start', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'}) \
-        .merge(dates_df, left_on='end', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'}) \
-        .merge(dates_df, left_on='filed', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
+        .merge(dates_df, left_on='start_date', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'}) \
+        .merge(dates_df, left_on='end_date', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'}) \
+        .merge(dates_df, left_on='filed_date', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
 
     # Rename columns to match the database schema
     df = df.rename(columns={
