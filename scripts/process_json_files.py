@@ -72,13 +72,6 @@ async def process_json_file(file_path):
         return dataframes
 
 
-if __name__ == "__main__":
-    directory_path = "companyfacts"
-    files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
-    files = files[0:3]
-
-    asyncio.run(main(files))
-
 async def main(files):
     for file in files:
         dataframes = await process_json_file(file)
@@ -86,3 +79,10 @@ async def main(files):
             print(f"Accounting Principle: {principle}")
             print(df.head())
             await insert_dataframe_to_db(df, principle)
+
+if __name__ == "__main__":
+    directory_path = "companyfacts"
+    files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
+    files = files[0:3]
+
+    asyncio.run(main(files))
