@@ -14,40 +14,43 @@ directory_path = "companyfacts"
 async def insert_dataframe_to_db(df):
     """Insert a dataframe into the database."""
     # Load symbols and dates tables into memory
+    await db_connector.initialize()
     symbols_df = await db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
     dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
 
     # Merge dataframes to resolve foreign keys
     df = df.merge(symbols_df, on='cik', how='left') \
-           .merge(dates_df, left_on='start', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'}) \
-           .merge(dates_df, left_on='end', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'}) \
-           .merge(dates_df, left_on='filed', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
+        .merge(dates_df, left_on='start', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'}) \
+        .merge(dates_df, left_on='end', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'}) \
+        .merge(dates_df, left_on='filed', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
 
     # Rename columns to match the database schema
     df = df.rename(columns={
-        'fiscal_year': 'fiscal_year',
-        'fiscal_period': 'fiscal_period',
+        'fy': 'fiscal_year',
+        'fp': 'fiscal_period',
         'form': 'form',
-        'value': 'value',
+        'val': 'value',
         'accn': 'accn'
     })
 
     # Select relevant columns for insertion
-    df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year', 'fiscal_period', 'form', 'value', 'accn']]
-
+    df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year',
+             'fiscal_period', 'form', 'value', 'accn']]
+    await db_connector.close()
+    return df
     # Perform bulk insert
-    await db_connector.run_query(
-        """
-        INSERT INTO financials.company_facts (
-            symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
-            fiscal_year, fiscal_period, form, value, accn
-        ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
-        ) ON CONFLICT DO NOTHING;
-        """,
-        params=df.values.tolist(),
-        return_df=False
-    )
+    # await db_connector.run_query(
+    #     """
+    #     INSERT INTO financials.company_facts (
+    #         symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
+    #         fiscal_year, fiscal_period, form, value, accn
+    #     ) VALUES (
+    #         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    #     ) ON CONFLICT DO NOTHING;
+    #     """,
+    #     params=df.values.tolist(),
+    #     return_df=False
+    # )
 
 
 # AI: If needed, please separate IO bound and CPU bound tasks, we are going to multiprocess this at some point.
@@ -78,8 +81,8 @@ async def process_json_file(file_path):
                             **entry
                         }
                         records.append(record)
-                        print(record)
             df = pd.DataFrame(records)
+            print(principle, len(df))
             dataframes[principle] = df
 
         return dataframes
@@ -91,11 +94,11 @@ async def main(files):
         dataframes = await process_json_file(file)
         all_dataframes.extend(dataframes.values())
 
-    return all_dataframes
-    
-    # if all_dataframes:
-    #     combined_df = pd.concat(all_dataframes, ignore_index=True)
-    #     await insert_dataframe_to_db(combined_df)
+    if all_dataframes:
+        combined_df = pd.concat(all_dataframes, ignore_index=True)
+        dfs_altered = await insert_dataframe_to_db(combined_df)
+
+    return all_dataframes, dfs_altered
 
 
 if __name__ == "__main__":
@@ -103,4 +106,4 @@ if __name__ == "__main__":
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
     files = files[0:3]
 
-    dfs = asyncio.run(main(files))
+    dfs, dfs_altered = asyncio.run(main(files))
