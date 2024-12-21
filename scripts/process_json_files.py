@@ -38,7 +38,7 @@ async def insert_dataframe_to_db(df):
     df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year',
              'fiscal_period', 'form', 'value', 'accn']]
     await db_connector.close()
-    return df
+    return df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date
     # Perform bulk insert
     # await db_connector.run_query(
     #     """
@@ -97,9 +97,9 @@ async def main(files):
 
     if all_dataframes:
         combined_df = pd.concat(all_dataframes, ignore_index=True)
-        dfs_altered = await insert_dataframe_to_db(combined_df)
+        df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date = await insert_dataframe_to_db(combined_df)
 
-    return all_dataframes, dfs_altered
+    return all_dataframes, df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date
 
 
 if __name__ == "__main__":
