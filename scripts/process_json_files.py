@@ -14,6 +14,7 @@ directory_path = "companyfacts"
 async def insert_dataframe_to_db(df: pd.DataFrame):
     """Insert a dataframe into the database."""
     # Load symbols and dates tables into memory
+    await db_connector.initialize()
     symbols_df = await db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
     dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
     # Cast columns to appropriate types
@@ -34,33 +35,32 @@ async def insert_dataframe_to_db(df: pd.DataFrame):
         columns={'date_id': 'filed_date_id'})
 
     # Rename columns to match the database schema
-    df = df.rename(columns={
+    df = df_merged_filed_date.rename(columns={
         'fy': 'fiscal_year',
         'fp': 'fiscal_period',
         'form': 'form',
         'val': 'value',
         'accn': 'accn'
     })
-
     # Select relevant columns for insertion
     df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year',
              'fiscal_period', 'form', 'value', 'accn']]
 
     # Perform bulk insert
-    await db_connector.run_query(
-        """
-        INSERT INTO financials.company_facts (
-            symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
-            fiscal_year, fiscal_period, form, value, accn
-        ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
-        ) ON CONFLICT DO NOTHING;
-        """,
-        params=df.values.tolist(),
-        return_df=False
-    )
+    # await db_connector.run_query(
+    #     """
+    #     INSERT INTO financials.company_facts (
+    #         symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
+    #         fiscal_year, fiscal_period, form, value, accn
+    #     ) VALUES (
+    #         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    #     ) ON CONFLICT DO NOTHING;
+    #     """,
+    #     params=df.values.tolist(),
+    #     return_df=False
+    # )
     await db_connector.close()
-
+    return df
 
 # AI: If needed, please separate IO bound and CPU bound tasks, we are going to multiprocess this at some point.
 # If it's fine to have async mixed with CPI bound tasks you may leave as is. AI!
@@ -104,16 +104,13 @@ async def main(files):
 
     if all_dataframes:
         combined_df = pd.concat(all_dataframes, ignore_index=True)
-        df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date = await insert_dataframe_to_db(
-            combined_df)
-
-    return all_dataframes, df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date
+        df = await insert_dataframe_to_db(combined_df)
+        return df
 
 
 if __name__ == "__main__":
     directory_path = "companyfacts"
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
-    files = files[0:3]
-    file = files[0]
+    files = files[5000:5002]
 
-    asyncio.run(main(files))
+    df = asyncio.run(main(files))
