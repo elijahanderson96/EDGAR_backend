@@ -18,11 +18,17 @@ async def insert_dataframe_to_db(df: pd.DataFrame):
     symbols_df = await db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
     dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
     print(df.columns)
-    # Merge dataframes to resolve foreign keys
+    # Cast columns to appropriate types
+    df['cik'] = df['cik'].astype(str)
+    df['start'] = pd.to_datetime(df['start'])
+    df['end'] = pd.to_datetime(df['end'])
+    df['filed'] = pd.to_datetime(df['filed'])
+    symbols_df['cik'] = symbols_df['cik'].astype(str)
+    dates_df['date'] = pd.to_datetime(dates_df['date'])
     df_merged_symbols = df.merge(symbols_df, on='cik', how='left')
     df_merged_start_date = df_merged_symbols.merge(dates_df, left_on='start', right_on='date', how='left').rename(
         columns={'date_id': 'start_date_id'})
-    df_merged_end_date = df.merge(dates_df, left_on='end', right_on='date').rename(
+    df_merged_end_date = df_merged_start_date.merge(dates_df, left_on='end', right_on='date', how='left').rename(
         columns={'date_id': 'end_date_id'})
     df_merged_filed_date = df_merged_end_date.merge(dates_df, left_on='filed', right_on='date', how='left').rename(
         columns={'date_id': 'filed_date_id'})
