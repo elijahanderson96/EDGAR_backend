@@ -42,24 +42,24 @@ async def insert_dataframe_to_db(df: pd.DataFrame):
         'accn': 'accn'
     })
 
-    # # Select relevant columns for insertion
-    # df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year',
-    #          'fiscal_period', 'form', 'value', 'accn']]
-    await db_connector.close()
-    return df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date
+    # Select relevant columns for insertion
+    df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year',
+             'fiscal_period', 'form', 'value', 'accn']]
+
     # Perform bulk insert
-    # await db_connector.run_query(
-    #     """
-    #     INSERT INTO financials.company_facts (
-    #         symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
-    #         fiscal_year, fiscal_period, form, value, accn
-    #     ) VALUES (
-    #         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
-    #     ) ON CONFLICT DO NOTHING;
-    #     """,
-    #     params=df.values.tolist(),
-    #     return_df=False
-    # )
+    await db_connector.run_query(
+        """
+        INSERT INTO financials.company_facts (
+            symbol_id, fact_name, unit, start_date_id, end_date_id, filed_date_id,
+            fiscal_year, fiscal_period, form, value, accn
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+        ) ON CONFLICT DO NOTHING;
+        """,
+        params=df.values.tolist(),
+        return_df=False
+    )
+    await db_connector.close()
 
 
 # AI: If needed, please separate IO bound and CPU bound tasks, we are going to multiprocess this at some point.
@@ -91,8 +91,6 @@ async def process_json_file(file_path):
                         }
                         records.append(record)
             df = pd.DataFrame(records)
-            print(principle, len(df))
-            print(df.columns)
             dataframes[principle] = df
 
         return dataframes
@@ -118,5 +116,4 @@ if __name__ == "__main__":
     files = files[0:3]
     file = files[0]
 
-    all_dataframes, df_merged_symbols, df_merged_start_date, df_merged_end_date, df_merged_filed_date = asyncio.run(
-        main(files))
+    asyncio.run(main(files))
