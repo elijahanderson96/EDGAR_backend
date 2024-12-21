@@ -17,13 +17,14 @@ async def insert_dataframe_to_db(df):
     await db_connector.initialize()
     symbols_df = await db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
     dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
-
+    print(df.columns)
     # Merge dataframes to resolve foreign keys
     df = df.merge(symbols_df, on='cik', how='left') \
-        .merge(dates_df, left_on='start_date', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'}) \
-        .merge(dates_df, left_on='end_date', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'}) \
-        .merge(dates_df, left_on='filed_date', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
-
+        .merge(dates_df, left_on='start', right_on='date', how='left').rename(columns={'date_id': 'start_date_id'}) \
+        .merge(dates_df, left_on='end', right_on='date', how='left').rename(columns={'date_id': 'end_date_id'}) \
+        .merge(dates_df, left_on='filed', right_on='date', how='left').rename(columns={'date_id': 'filed_date_id'})
+    print(df.columns)
+    print(df)
     # Rename columns to match the database schema
     df = df.rename(columns={
         'fy': 'fiscal_year',
