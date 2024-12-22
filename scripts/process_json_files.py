@@ -78,7 +78,16 @@ async def insert_dataframe_to_db(df: pd.DataFrame):
     df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year',
              'fiscal_period', 'form', 'value', 'accn']]
 
-    # Perform bulk insert
+    # Identify total records before dropping NaN symbol_id
+    total_records_before = df.shape[0]
+    print(f"Total records before dropping NaN symbol_id: {total_records_before}")
+
+    # Drop records where symbol_id is NaN
+    df = df.dropna(subset=['symbol_id'])
+
+    # Identify total records after dropping NaN symbol_id
+    total_records_after = df.shape[0]
+    print(f"Total records after dropping NaN symbol_id: {total_records_after}")
     # await db_connector.run_query(
     #     """
     #     INSERT INTO financials.company_facts (
