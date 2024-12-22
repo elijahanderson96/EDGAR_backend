@@ -6,18 +6,46 @@ import pandas as pd
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
+import aiohttp
 
 from database.async_database import db_connector
 
 directory_path = "companyfacts"
 
 
+async def fetch_submission_data(cik: str):
+    """Fetch submission data from the SEC endpoint."""
+    url = f"https://data.sec.gov/submissions/CIK{cik}.json"
+    headers = {"User-Agent": "YourCompanyName YourAppName/1.0"}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                return None
+
+
 async def insert_dataframe_to_db(df: pd.DataFrame):
     """Insert a dataframe into the database."""
-    # Load symbols and dates tables into memory
+    # Load symbols table into memory
     await db_connector.initialize()
     symbols_df = await db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
     dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
+    # Check and insert missing CIKs
+    for cik in df['cik'].unique():
+        if cik not in symbols_df['cik'].values:
+            submission_data = await fetch_submission_data(cik)
+            if submission_data:
+                tickers = submission_data.get("tickers", [])
+                symbol = tickers[-1] if tickers else None
+                name = submission_data.get("name", "")
+                if symbol:
+                    await db_connector.run_query(
+                        "INSERT INTO metadata.symbols (cik, symbol, title) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;",
+                        params=[cik, symbol, name],
+                        return_df=False
+                    )
+
     # Cast columns to appropriate types
     df['cik'] = df['cik'].astype(str)
     df['start'] = pd.to_datetime(df['start'])
