@@ -16,9 +16,9 @@ directory_path = "companyfacts"
 async def fetch_submission_data(cik: str):
     """Fetch submission data from the SEC endpoint."""
     url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-    headers = {"User-Agent": "YourCompanyName YourAppName/1.0"}
+    headers = {"User-Agent": "Elijah Anderson (elijahanderson96@gmail.com)"}
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as response:
+        async with session.get(url, headers=headers, ssl=False) as response:
             if response.status == 200:
                 return await response.json()
             else:
@@ -40,6 +40,9 @@ async def insert_dataframe_to_db(df: pd.DataFrame):
                 symbol = tickers[-1] if tickers else None
                 name = submission_data.get("name", "")
                 if symbol:
+                    print(f"Inserting {cik}...")
+                    print(tickers, symbol, name)
+                    input("BREAK")
                     await db_connector.run_query(
                         "INSERT INTO metadata.symbols (cik, symbol, title) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;",
                         params=[cik, symbol, name],
@@ -90,6 +93,7 @@ async def insert_dataframe_to_db(df: pd.DataFrame):
     # )
     await db_connector.close()
     return df
+
 
 # AI: If needed, please separate IO bound and CPU bound tasks, we are going to multiprocess this at some point.
 # If it's fine to have async mixed with CPI bound tasks you may leave as is. AI!
@@ -146,7 +150,6 @@ if __name__ == "__main__":
     directory_path = "companyfacts"
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
 
-    df = asyncio.run(main(files[0:350]))
+    df = asyncio.run(main(files[0:3]))
     print(df.shape)
     print(df.sample(25))
-
