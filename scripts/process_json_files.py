@@ -104,7 +104,7 @@ def process_file(file):
 
 async def main(files):
     all_dataframes = []
-    with ProcessPoolExecutor(max_workers=cpu_count()) as executor:
+    with ProcessPoolExecutor(max_workers=cpu_count() - 2) as executor:
         for dataframes in tqdm(executor.map(process_file, files), total=len(files), desc="Processing files"):
             all_dataframes.extend(dataframes.values())
 
@@ -118,4 +118,7 @@ if __name__ == "__main__":
     directory_path = "companyfacts"
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
 
-    df = asyncio.run(main(files))
+    df = asyncio.run(main(files[0:350]))
+    print(df.shape)
+    print(df.sample(25))
+
