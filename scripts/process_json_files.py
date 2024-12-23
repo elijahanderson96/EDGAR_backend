@@ -146,6 +146,7 @@ def process_file(file):
 async def main(files):
     with ProcessPoolExecutor(max_workers=cpu_count() - 2) as executor:
         for dataframes in tqdm(executor.map(process_file, files), total=len(files), desc="Processing files"):
+            pass
 
 
 if __name__ == "__main__":
