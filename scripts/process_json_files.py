@@ -10,9 +10,12 @@ import aiohttp
 
 from database.async_database import db_connector
 
-await db_connector.initialize()
-symbols_df = await db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
-dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
+async def initialize_database():
+    await db_connector.initialize()
+    symbols_df = await db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
+    dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
+    return symbols_df, dates_df
+
 directory_path = "companyfacts"
 
 
@@ -144,6 +147,7 @@ def process_file(file):
 
 
 async def main(files):
+    symbols_df, dates_df = await initialize_database()
     loop = asyncio.get_running_loop()
     with ProcessPoolExecutor(max_workers=cpu_count() - 2) as executor:
         for f in tqdm(asyncio.as_completed(tasks), total=len(files), desc="Processing files"):
