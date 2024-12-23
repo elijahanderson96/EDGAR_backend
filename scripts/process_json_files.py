@@ -4,7 +4,7 @@ import asyncio
 import aiofiles
 import pandas as pd
 from tqdm import tqdm
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
 import aiohttp
 
@@ -145,7 +145,7 @@ def process_file(file):
 
 async def main(files):
     loop = asyncio.get_running_loop()
-    with ThreadPoolExecutor(max_workers=cpu_count() - 2) as executor:
+    with ProcessPoolExecutor(max_workers=cpu_count() - 2) as executor:
         tasks = [
             loop.run_in_executor(executor, process_file, file)
             for file in files
