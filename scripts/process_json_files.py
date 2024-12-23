@@ -10,6 +10,9 @@ import aiohttp
 
 from database.async_database import db_connector
 
+db_connector.initialize()
+symbols_df = db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
+dates_df = db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
 directory_path = "companyfacts"
 
 
@@ -27,10 +30,6 @@ async def fetch_submission_data(cik: str):
 
 async def insert_dataframe_to_db(df: pd.DataFrame):
     """Insert a dataframe into the database."""
-    # Load symbols table into memory
-    await db_connector.initialize()
-    symbols_df = await db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
-    dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
     # Check and insert missing CIKs
     for cik in df['cik'].unique():
         if cik not in symbols_df['cik'].values:
@@ -100,7 +99,6 @@ async def insert_dataframe_to_db(df: pd.DataFrame):
     #     params=df.values.tolist(),
     #     return_df=False
     # )
-    await db_connector.close()
     return df
 
 
@@ -159,6 +157,7 @@ if __name__ == "__main__":
     directory_path = "companyfacts"
     files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.json')]
 
-    df = asyncio.run(main(files[0:3]))
+    df = asyncio.run(main(files[0:100]))
     print(df.shape)
     print(df.sample(25))
+    db_connector.close()
