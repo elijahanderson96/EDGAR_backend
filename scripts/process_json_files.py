@@ -10,9 +10,9 @@ import aiohttp
 
 from database.async_database import db_connector
 
-db_connector.initialize()
-symbols_df = db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
-dates_df = db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
+await db_connector.initialize()
+symbols_df = await db_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
+dates_df = await db_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
 directory_path = "companyfacts"
 
 
@@ -161,4 +161,4 @@ if __name__ == "__main__":
     df = asyncio.run(main(files[0:100]))
     print(df.shape)
     print(df.sample(25))
-    db_connector.close()
+    await db_connector.close()
