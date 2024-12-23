@@ -133,7 +133,9 @@ async def process_json_file(file_path):
             df = pd.DataFrame(records)
             dataframes[principle] = df
 
-        return dataframes
+        # Insert each dataframe into the database as it is processed
+        for principle, df in dataframes.items():
+            await insert_dataframe_to_db(df)
 
 
 def process_file(file):
@@ -142,15 +144,8 @@ def process_file(file):
 
 
 async def main(files):
-    all_dataframes = []
     with ProcessPoolExecutor(max_workers=cpu_count() - 2) as executor:
         for dataframes in tqdm(executor.map(process_file, files), total=len(files), desc="Processing files"):
-            all_dataframes.extend(dataframes.values())
-
-    if all_dataframes:
-        combined_df = pd.concat(all_dataframes, ignore_index=True)
-        df = await insert_dataframe_to_db(combined_df)
-        return df
 
 
 if __name__ == "__main__":
