@@ -133,9 +133,9 @@ async def process_json_file(file_path):
             df = pd.DataFrame(records)
             dataframes[principle] = df
 
-        # Insert each dataframe into the database as it is processed
-        for principle, df in dataframes.items():
-            await insert_dataframe_to_db(df)
+        # Concatenate all dataframes and insert into the database
+        concatenated_df = pd.concat(dataframes.values(), ignore_index=True)
+        await insert_dataframe_to_db(concatenated_df)
 
 
 def process_file(file):
