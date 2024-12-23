@@ -146,10 +146,6 @@ def process_file(file):
 async def main(files):
     loop = asyncio.get_running_loop()
     with ProcessPoolExecutor(max_workers=cpu_count() - 2) as executor:
-        tasks = [
-            loop.run_in_executor(executor, process_file, file)
-            for file in files
-        ]
         for f in tqdm(asyncio.as_completed(tasks), total=len(files), desc="Processing files"):
             await f
 
