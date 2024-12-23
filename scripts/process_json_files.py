@@ -31,7 +31,7 @@ async def fetch_submission_data(cik: str):
                 return None
 
 
-async def insert_dataframe_to_db(df: pd.DataFrame):
+async def insert_dataframe_to_db(df: pd.DataFrame, symbols_df: pd.DataFrame, dates_df: pd.DataFrame):
     """Insert a dataframe into the database."""
     # Check and insert missing CIKs
     for cik in df['cik'].unique():
@@ -147,11 +147,14 @@ def process_file(file):
 
 
 async def main(files):
+    global symbols_df, dates_df
     symbols_df, dates_df = await initialize_database()
     loop = asyncio.get_running_loop()
+    tasks = [loop.run_in_executor(executor, process_file, file) for file in files]
     with ProcessPoolExecutor(max_workers=cpu_count() - 2) as executor:
         for f in tqdm(asyncio.as_completed(tasks), total=len(files), desc="Processing files"):
             await f
+    await db_connector.close()
 
 
 if __name__ == "__main__":
