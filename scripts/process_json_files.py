@@ -161,4 +161,4 @@ if __name__ == "__main__":
     df = asyncio.run(main(files[0:100]))
     print(df.shape)
     print(df.sample(25))
-    await db_connector.close()
+    db_connector.close()
