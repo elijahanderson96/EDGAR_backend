@@ -81,6 +81,29 @@ class FactFrequencyAnalyzer:
         ORDER BY hd.date;
         """
         return await self.db_connector.run_query(query, params=[symbol], return_df=True)
+
+    async def calculate_market_cap(self, symbol: str) -> pd.DataFrame:
+        """
+        Calculate the market capitalization for a given symbol based on the number of outstanding shares
+        and the closing price from the historical data.
+
+        Parameters:
+        - symbol (str): The stock symbol to calculate the market cap for.
+
+        Returns:
+        - pd.DataFrame: DataFrame with the market cap for each date.
+        """
+        query = """
+        SELECT hd.date, 
+               (cf.value * hd.close) AS market_cap
+        FROM financials.company_facts cf
+        LEFT JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
+        LEFT JOIN financials.historical_data hd ON cf.symbol_id = hd.symbol_id AND cf.filed_date_id = hd.date_id
+        WHERE cf.fact_name = 'EntityCommonStockSharesOutstanding'
+        AND s.symbol = $1
+        ORDER BY hd.date;
+        """
+        return await self.db_connector.run_query(query, params=[symbol], return_df=True)
         """
         Analyze the frequency of each fact name being reported across all symbols.
 
