@@ -5,18 +5,22 @@ from edgar.symbols import symbols
 from database.async_database import db_connector  # Assuming db_connector provides `run_query` method
 
 
-def get_historical_prices(symbol, start_date, end_date):
+def get_historical_prices(symbols, start_date, end_date):
     """
-    Fetches historical end-of-day prices for a given stock symbol.
+    Fetches historical end-of-day prices for multiple stock symbols.
     """
     try:
-        data = yf.download(symbol, start=start_date, end=end_date)
-        data.columns = [col.lower().replace(" ", "_") for col in data.columns]
-        data['symbol'] = symbol
-        print(f"Fetched data for {symbol} from {start_date} to {end_date}")
-        return data
+        data = yf.download(symbols, start=start_date, end=end_date, group_by='ticker')
+        all_data = []
+        for symbol in symbols:
+            symbol_data = data[symbol]
+            symbol_data.columns = [col.lower().replace(" ", "_") for col in symbol_data.columns]
+            symbol_data['symbol'] = symbol
+            all_data.append(symbol_data)
+            print(f"Fetched data for {symbol} from {start_date} to {end_date}")
+        return pd.concat(all_data)
     except Exception as e:
-        print(f"Error fetching data for {symbol}: {e}")
+        print(f"Error fetching data for symbols: {e}")
         return None
 
 
@@ -92,28 +96,34 @@ async def insert_data_to_db(df):
         print(f"Error inserting data for symbol {df['symbol'].iloc[0]}: {e}")
 
 
-async def process_symbol(symbol, start_date, end_date):
+async def process_symbols(symbols, start_date, end_date):
     """
-    Fetches historical prices for a symbol, then inserts them into the database, handling each symbol sequentially.
+    Fetches historical prices for multiple symbols, aggregates the data, and inserts it into the database.
     """
     try:
-        df = get_historical_prices(symbol, start_date, end_date)
+        df = get_historical_prices(symbols, start_date, end_date)
         if df is not None and not df.empty:
-            await insert_data_to_db(df)
+            # Aggregate data until 3 million rows are reached
+            if len(df) >= 3000000:
+                await insert_data_to_db(df)
+                df = pd.DataFrame()  # Reset DataFrame after insertion
 
         # Add a delay to avoid hitting rate limits
         await asyncio.sleep(1)  # Adjust this delay as needed
     except Exception as e:
-        print(f"Error processing symbol {symbol}: {e}")
+        print(f"Error processing symbols: {e}")
 
 
 async def main(start_date, end_date):
     await db_connector.initialize()
     symbols_list = symbols['symbol'].to_list()  # Assuming symbols is a list of symbols to process
 
-    for symbol in symbols_list:
-        await process_symbol(symbol, start_date, end_date)  # Sequentially process each symbol
-        break
+    # Process symbols in batches
+    batch_size = 100  # Adjust batch size as needed
+    for i in range(0, len(symbols_list), batch_size):
+        batch_symbols = symbols_list[i:i + batch_size]
+        await process_symbols(batch_symbols, start_date, end_date)
+
     await db_connector.close()
 
 
