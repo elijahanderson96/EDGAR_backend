@@ -37,13 +37,13 @@ def get_historical_prices(symbols, start_date, end_date):
         data = yf.download(symbols, start=start_date, end=end_date, group_by='ticker')
         all_data = []
         print(data)
-        for symbol in symbols:
-            symbol_data = data[symbol]
+        for symbol in data.columns.levels[0]:
+            symbol_data = data[symbol].copy()
             symbol_data.columns = [col.lower().replace(" ", "_") for col in symbol_data.columns]
             symbol_data['symbol'] = symbol
             all_data.append(symbol_data)
             print(f"Fetched data for {symbol} from {start_date} to {end_date}")
-            time.sleep(.5)
+            time.sleep(0.5)
         return pd.concat(all_data)
     except Exception as e:
         print(f"Error fetching data for symbols: {e}")
