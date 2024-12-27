@@ -1,8 +1,32 @@
+import io
+import time
+
 import pandas as pd
 import yfinance as yf
 import asyncio
 from edgar.symbols import symbols
-from database.async_database import db_connector  # Assuming db_connector provides `run_query` method
+from database.async_database import db_connector
+
+
+async def insert_dataframe_to_db(df: pd.DataFrame):
+    """Insert a dataframe into the database using copy_to_table."""
+    output = io.StringIO()
+    df.to_csv(output, sep='\t', index=False, header=False, na_rep='\\N')
+    output.seek(0)
+
+    async with db_connector.pool.acquire() as connection:
+        try:
+            await connection.copy_to_table(
+                'historical_data',
+                schema_name='financials',
+                source=output,
+                format='csv',
+                delimiter='\t',
+                columns=df.columns.tolist()
+            )
+        except Exception as e:
+            print(e)
+            raise
 
 
 def get_historical_prices(symbols, start_date, end_date):
@@ -12,12 +36,14 @@ def get_historical_prices(symbols, start_date, end_date):
     try:
         data = yf.download(symbols, start=start_date, end=end_date, group_by='ticker')
         all_data = []
+        print(data)
         for symbol in symbols:
             symbol_data = data[symbol]
             symbol_data.columns = [col.lower().replace(" ", "_") for col in symbol_data.columns]
             symbol_data['symbol'] = symbol
             all_data.append(symbol_data)
             print(f"Fetched data for {symbol} from {start_date} to {end_date}")
+            time.sleep(.5)
         return pd.concat(all_data)
     except Exception as e:
         print(f"Error fetching data for symbols: {e}")
@@ -41,8 +67,6 @@ async def fetch_metadata():
         return None, None
 
 
-from scripts.process_json_files_optimized import insert_dataframe_to_db
-
 async def insert_data_to_db(df):
     """
     Merges the historical price data with symbol and date metadata,
@@ -64,24 +88,24 @@ async def insert_data_to_db(df):
     # Select relevant columns for insertion
     insert_df = merged_df[['symbol_id', 'date_id', 'open', 'high', 'low', 'close', 'adj_close', 'volume']]
 
-    # Retrieve rows not in the database
-    rows_not_in_db = await db_connector.drop_existing_rows(insert_df[['symbol_id', 'date_id']],
-                                                           "financials.historical_data", ["symbol_id", "date_id"])
+    # # Retrieve rows not in the database
+    # rows_not_in_db = await db_connector.drop_existing_rows(insert_df[['symbol_id', 'date_id']],
+    #                                                        "financials.historical_data", ["symbol_id", "date_id"])
 
-    # Filter to keep only rows not in the database using `isin`
-    if rows_not_in_db.empty:
-        print("All rows already exist in the database. No new data to insert.")
-        return
-
-    insert_df = insert_df[
-        (insert_df['symbol_id'].isin(rows_not_in_db['symbol_id']) &
-         insert_df['date_id'].isin(rows_not_in_db['date_id']))
-    ]
+    # # Filter to keep only rows not in the database using `isin`
+    # if rows_not_in_db.empty:
+    #     print("All rows already exist in the database. No new data to insert.")
+    #     return
+    #
+    # insert_df = insert_df[
+    #     (insert_df['symbol_id'].isin(rows_not_in_db['symbol_id']) &
+    #      insert_df['date_id'].isin(rows_not_in_db['date_id']))
+    # ]
 
     try:
         # Use insert_dataframe_to_db for bulk insertion
         await insert_dataframe_to_db(insert_df)
-        print(f"Inserted data for symbols in date range: {df['date'].min()} to {df['date'].max()}")
+        print(f"Inserted {insert_df.shape[0]} records.")
     except Exception as e:
         print(f"Error inserting data for symbols: {e}")
 
@@ -110,7 +134,7 @@ async def main(start_date, end_date):
     symbols_list = symbols['symbol'].to_list()  # Assuming symbols is a list of symbols to process
 
     # Process symbols in batches
-    batch_size = 100  # Adjust batch size as needed
+    batch_size = 10  # Adjust batch size as needed
     for i in range(0, len(symbols_list), batch_size):
         batch_symbols = symbols_list[i:i + batch_size]
         await process_symbols(batch_symbols, start_date, end_date)
