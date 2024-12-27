@@ -41,10 +41,12 @@ async def fetch_metadata():
         return None, None
 
 
+from scripts.process_json_files_optimized import insert_dataframe_to_db
+
 async def insert_data_to_db(df):
     """
     Merges the historical price data with symbol and date metadata,
-    and performs a bulk insert into the historical_data table.
+    and performs a bulk insert into the historical_data table using copy_to_table.
     """
     symbols_df, dates_df = await fetch_metadata()
     if symbols_df is None or dates_df is None:
@@ -76,24 +78,12 @@ async def insert_data_to_db(df):
          insert_df['date_id'].isin(rows_not_in_db['date_id']))
     ]
 
-    # Prepare bulk insert values using the filtered insert_df
-    values = [(
-        row.symbol_id, row.date_id, row.open, row.high, row.low, row.close, row.adj_close, row.volume
-    ) for row in insert_df.itertuples(index=False)]
-
-    insert_query = """
-    INSERT INTO financials.historical_data (symbol_id, date_id, open, high, low, close, adj_close, volume)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    ON CONFLICT (symbol_id, date_id) DO NOTHING;
-    """
-
     try:
-        # Use executemany to insert data in bulk
-        async with db_connector.pool.acquire() as connection:
-            await connection.executemany(insert_query, values)
+        # Use insert_dataframe_to_db for bulk insertion
+        await insert_dataframe_to_db(insert_df)
         print(f"Inserted data for symbols in date range: {df['date'].min()} to {df['date'].max()}")
     except Exception as e:
-        print(f"Error inserting data for symbol {df['symbol'].iloc[0]}: {e}")
+        print(f"Error inserting data for symbols: {e}")
 
 
 async def process_symbols(symbols, start_date, end_date):
@@ -103,10 +93,11 @@ async def process_symbols(symbols, start_date, end_date):
     try:
         df = get_historical_prices(symbols, start_date, end_date)
         if df is not None and not df.empty:
-            # Aggregate data until 3 million rows are reached
-            if len(df) >= 3000000:
-                await insert_data_to_db(df)
-                df = pd.DataFrame()  # Reset DataFrame after insertion
+            # Insert data in chunks of 3 million rows
+            chunk_size = 3000000
+            for start in range(0, len(df), chunk_size):
+                chunk_df = df.iloc[start:start + chunk_size]
+                await insert_data_to_db(chunk_df)
 
         # Add a delay to avoid hitting rate limits
         await asyncio.sleep(1)  # Adjust this delay as needed
