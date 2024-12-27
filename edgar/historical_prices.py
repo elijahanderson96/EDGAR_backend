@@ -44,6 +44,8 @@ def get_historical_prices(symbols, start_date, end_date):
                 print(f"Skipping {symbol} as it contains all NaN records.")
                 continue
             symbol_data.columns = [col.lower().replace(" ", "_") for col in symbol_data.columns]
+            # Drop rows where 'open', 'high', 'low', and 'close' are all NaN
+            symbol_data.dropna(subset=['open', 'high', 'low', 'close'], how='all', inplace=True)
             symbol_data['symbol'] = symbol
             all_data.append(symbol_data)
             print(f"Fetched data for {symbol} from {start_date} to {end_date}")
