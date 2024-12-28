@@ -1,6 +1,5 @@
 import pandas as pd
 from database.async_database import db_connector
-import asyncio
 
 
 class FactFrequencyAnalyzer:
@@ -71,59 +70,30 @@ class FactFrequencyAnalyzer:
         - pd.DataFrame: DataFrame with the market cap for each date.
         """
         query = """
-        SELECT hd.date, 
-               (cf.value * hd.close) AS market_cap
-        FROM financials.company_facts cf
-        LEFT JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
-        LEFT JOIN financials.historical_data hd ON cf.symbol_id = hd.symbol_id AND cf.filed_date_id = hd.date_id
-        WHERE cf.fact_name = 'EntityCommonStockSharesOutstanding'
-        AND s.symbol = $1
-        ORDER BY hd.date;
-        """
+        CREATE MATERIALIZED VIEW financials.market_caps AS
+WITH max_date_cf AS (
+    SELECT cf.symbol_id,
+           MAX(cf.filed_date_id) AS latest_filed_date_id,
+           (SELECT cf_inner.value
+            FROM financials.company_facts cf_inner
+            WHERE cf_inner.symbol_id = cf.symbol_id
+--               AND cf_inner.filed_date_id = MAX(cf.filed_date_id)
+              AND cf_inner.end_date_id = MAX(cf.end_date_id)
+              AND cf_inner.fact_name IN ('EntityCommonStockSharesOutstanding', 'CommonStockSharesOutstanding')
+            LIMIT 1
+           ) AS shares_outstanding
+    FROM financials.company_facts cf
+    WHERE cf.fact_name IN ('EntityCommonStockSharesOutstanding', 'CommonStockSharesOutstanding')
+    GROUP BY cf.symbol_id
+)
+SELECT d.date,
+       s.symbol,
+       (mcf.shares_outstanding * hd.close) AS market_cap,
+       mcf.shares_outstanding as shares,
+       hd.close as price
+FROM max_date_cf mcf
+JOIN financials.historical_data hd ON mcf.symbol_id = hd.symbol_id
+JOIN metadata.dates d ON d.date_id = hd.date_id
+JOIN metadata.symbols s ON mcf.symbol_id = s.symbol_id
+ORDER BY s.symbol, d.date;"""
         return await self.db_connector.run_query(query, params=[symbol], return_df=True)
-
-    async def calculate_market_cap(self, symbol: str) -> pd.DataFrame:
-        """
-        Calculate the market capitalization for a given symbol based on the number of outstanding shares
-        and the closing price from the historical data.
-
-        Parameters:
-        - symbol (str): The stock symbol to calculate the market cap for.
-
-        Returns:
-        - pd.DataFrame: DataFrame with the market cap for each date.
-        """
-        query = """
-        SELECT hd.date, 
-               (cf.value * hd.close) AS market_cap
-        FROM financials.company_facts cf
-        LEFT JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
-        LEFT JOIN financials.historical_data hd ON cf.symbol_id = hd.symbol_id AND cf.filed_date_id = hd.date_id
-        WHERE cf.fact_name = 'EntityCommonStockSharesOutstanding'
-        AND s.symbol = $1
-        ORDER BY hd.date;
-        """
-        return await self.db_connector.run_query(query, params=[symbol], return_df=True)
-        """
-        Analyze the frequency of each fact name being reported across all symbols.
-
-        Returns:
-        - pd.DataFrame: DataFrame with fact names and their reporting frequency percentage.
-        """
-        query = """
-        WITH total_filed_dates AS (
-            SELECT COUNT(DISTINCT filed_date_id) AS total_filed_dates
-            FROM financials.company_facts
-        ),
-        total_symbols AS (
-            SELECT COUNT(DISTINCT symbol_id) AS total_symbols
-            FROM financials.company_facts
-        )
-        SELECT fact_name,
-               (COUNT(DISTINCT filed_date_id) * 100.0 / (SELECT total_filed_dates FROM total_filed_dates)) AS filing_percentage,
-               (COUNT(DISTINCT symbol_id) * 100.0 / (SELECT total_symbols FROM total_symbols)) AS symbol_percentage
-        FROM financials.company_facts
-        GROUP BY fact_name
-        ORDER BY filing_percentage DESC, symbol_percentage DESC;
-        """
-        return await self.run_query(query, return_df=True)

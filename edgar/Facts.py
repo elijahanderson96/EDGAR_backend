@@ -1,7 +1,6 @@
 import asyncio
 
 import numpy as np
-import pandas as pd
 import requests
 from database.async_database import db_connector  # Async database connector with necessary methods
 
@@ -169,14 +168,13 @@ async def main():
     # # Convert to sets to perform the subtraction operation
     # ciks = list(set(ciks) - set(ciks_already_present['cik']))
 
-
     # for cik in ciks:
     cik = '0001481513'
     try:
-            fetcher = SECCompanyFactsFetcher(cik=str(cik).zfill(10))
-            await fetcher.fetch_and_save_all_facts()
+        fetcher = SECCompanyFactsFetcher(cik=str(cik).zfill(10))
+        await fetcher.fetch_and_save_all_facts()
     except Exception as e:
-            print(f"Error processing CIK {cik}: {e}")
+        print(f"Error processing CIK {cik}: {e}")
 
     await db_connector.close()
 

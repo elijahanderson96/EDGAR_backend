@@ -10,7 +10,7 @@ from database.async_database import db_connector
 
 async def insert_dataframe_to_db(df: pd.DataFrame):
     """Insert a dataframe into the database using copy_to_table."""
-    output = io.StringIO()
+    output = io.BytesIO()
     df.to_csv(output, sep='\t', index=False, header=False, na_rep='\\N')
     output.seek(0)
 
@@ -36,20 +36,14 @@ def get_historical_prices(symbols, start_date, end_date):
     try:
         data = yf.download(symbols, start=start_date, end=end_date, group_by='ticker')
         all_data = []
-        print(data)
         for symbol in data.columns.levels[0]:
             symbol_data = data[symbol].copy()
-            # Drop symbols with all NaN records
-            if symbol_data.isna().all().all():
-                print(f"Skipping {symbol} as it contains all NaN records.")
-                continue
             symbol_data.columns = [col.lower().replace(" ", "_") for col in symbol_data.columns]
             # Drop rows where 'open', 'high', 'low', and 'close' are all NaN
             symbol_data.dropna(subset=['open', 'high', 'low', 'close'], how='all', inplace=True)
             symbol_data['symbol'] = symbol
             all_data.append(symbol_data)
             print(f"Fetched data for {symbol} from {start_date} to {end_date}")
-            time.sleep(0.5)
         return pd.concat(all_data)
     except Exception as e:
         print(f"Error fetching data for symbols: {e}")
@@ -92,7 +86,10 @@ async def insert_data_to_db(df):
     merged_df = merged_df.merge(dates_df, on='date', how='inner')
 
     # Select relevant columns for insertion
-    insert_df = merged_df[['symbol_id', 'date_id', 'open', 'high', 'low', 'close', 'adj_close', 'volume']]
+    insert_df = merged_df[['symbol_id', 'date_id', 'open', 'high', 'low', 'close', 'volume']]
+    # Ensure 'volume' and other numeric columns are integers if needed
+    if 'volume' in insert_df.columns:
+        insert_df['volume'] = insert_df['volume'].fillna(0).astype(int)
 
     # # Retrieve rows not in the database
     # rows_not_in_db = await db_connector.drop_existing_rows(insert_df[['symbol_id', 'date_id']],
@@ -128,9 +125,6 @@ async def process_symbols(symbols, start_date, end_date):
             for start in range(0, len(df), chunk_size):
                 chunk_df = df.iloc[start:start + chunk_size]
                 await insert_data_to_db(chunk_df)
-
-        # Add a delay to avoid hitting rate limits
-        await asyncio.sleep(1)  # Adjust this delay as needed
     except Exception as e:
         print(f"Error processing symbols: {e}")
 
@@ -138,9 +132,8 @@ async def process_symbols(symbols, start_date, end_date):
 async def main(start_date, end_date):
     await db_connector.initialize()
     symbols_list = symbols['symbol'].to_list()  # Assuming symbols is a list of symbols to process
-
     # Process symbols in batches
-    batch_size = 10  # Adjust batch size as needed
+    batch_size = 1  # Adjust batch size as needed
     for i in range(0, len(symbols_list), batch_size):
         batch_symbols = symbols_list[i:i + batch_size]
         await process_symbols(batch_symbols, start_date, end_date)
