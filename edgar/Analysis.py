@@ -98,7 +98,7 @@ JOIN metadata.symbols s ON mcf.symbol_id = s.symbol_id
 ORDER BY s.symbol, d.date;"""
         return await self.db_connector.run_query(query, params=[symbol], return_df=True)
 
-    async def most_common_facts(self, top_n: int = 10) -> pd.DataFrame:
+    async def most_common_facts(self, top_n: int = 25) -> pd.DataFrame:
         """
         Identify the most commonly reported fact names within the company facts table.
 
