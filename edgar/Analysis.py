@@ -132,12 +132,12 @@ class FactFrequencyAnalyzer:
         WITH cash_flow AS (
             SELECT symbol_id, value AS operating_cash_flow
             FROM financials.company_facts
-            WHERE fact_name = 'OperatingCashFlow'
+            WHERE fact_name = 'NetCashProvidedByUsedInOperatingActivities'
         ),
         liabilities AS (
             SELECT symbol_id, value AS total_liabilities
             FROM financials.company_facts
-            WHERE fact_name = 'TotalLiabilities'
+            WHERE fact_name = 'Liabilities'
         )
         SELECT s.symbol,
                (cf.operating_cash_flow / li.total_liabilities) AS cash_flow_to_liabilities_ratio
