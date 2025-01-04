@@ -12,7 +12,9 @@ def manage_db_connection(func):
         finally:
             await self.db_connector.close()
         return result
+
     return wrapper
+
     def __init__(self):
         self.db_connector = db_connector
 
@@ -113,7 +115,6 @@ def manage_db_connection(func):
         ORDER BY s.symbol, d.date;
         """
         return await self.db_connector.run_query(query, params=[symbol], return_df=True)
-
 
     @manage_db_connection
     async def most_common_facts(self, top_n: int = 25) -> pd.DataFrame:
