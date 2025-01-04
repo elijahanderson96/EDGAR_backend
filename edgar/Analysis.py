@@ -98,58 +98,6 @@ JOIN metadata.symbols s ON mcf.symbol_id = s.symbol_id
 ORDER BY s.symbol, d.date;"""
         return await self.db_connector.run_query(query, params=[symbol], return_df=True)
 
-    async def create_standardized_metrics_view(self):
-        """
-        Create a materialized view that standardizes financial metrics against market caps and calculates common ratios.
-        """
-        query = """
-        CREATE MATERIALIZED VIEW financials.standardized_metrics AS
-        SELECT 
-            mc.date,
-            mc.symbol,
-            mc.market_cap,
-            cf.fact_name,
-            cf.value / mc.market_cap AS standardized_value,
-            CASE WHEN cf.fact_name = 'NetIncomeLoss' THEN cf.value / mc.market_cap END AS net_income_to_market_cap,
-            CASE WHEN cf.fact_name = 'StockholdersEquity' THEN cf.value / mc.market_cap END AS equity_to_market_cap,
-            CASE WHEN cf.fact_name = 'EarningsPerShareBasic' THEN cf.value / mc.shares END AS eps_basic,
-            CASE WHEN cf.fact_name = 'OperatingIncomeLoss' THEN cf.value / mc.market_cap END AS operating_income_to_market_cap,
-            CASE WHEN cf.fact_name = 'CashAndCashEquivalentsAtCarryingValue' THEN cf.value / mc.market_cap END AS cash_to_market_cap,
-            CASE WHEN cf.fact_name = 'EarningsPerShareDiluted' THEN cf.value / mc.shares END AS eps_diluted,
-            CASE WHEN cf.fact_name = 'IncomeTaxExpenseBenefit' THEN cf.value / mc.market_cap END AS tax_expense_to_market_cap,
-            CASE WHEN cf.fact_name = 'WeightedAverageNumberOfSharesOutstandingBasic' THEN cf.value END AS shares_outstanding_basic,
-            CASE WHEN cf.fact_name = 'WeightedAverageNumberOfDilutedSharesOutstanding' THEN cf.value END AS shares_outstanding_diluted,
-            CASE WHEN cf.fact_name = 'Assets' THEN cf.value / mc.market_cap END AS assets_to_market_cap,
-            CASE WHEN cf.fact_name = 'LiabilitiesAndStockholdersEquity' THEN cf.value / mc.market_cap END AS liabilities_equity_to_market_cap,
-            CASE WHEN cf.fact_name = 'ComprehensiveIncomeNetOfTax' THEN cf.value / mc.market_cap END AS comprehensive_income_to_market_cap,
-            CASE WHEN cf.fact_name = 'InterestExpense' THEN cf.value / mc.market_cap END AS interest_expense_to_market_cap,
-            CASE WHEN cf.fact_name = 'RetainedEarningsAccumulatedDeficit' THEN cf.value / mc.market_cap END AS retained_earnings_to_market_cap,
-            CASE WHEN cf.fact_name = 'NetCashProvidedByUsedInOperatingActivities' THEN cf.value / mc.market_cap END AS cash_flow_operating_to_market_cap,
-            CASE WHEN cf.fact_name = 'NetCashProvidedByUsedInFinancingActivities' THEN cf.value / mc.market_cap END AS cash_flow_financing_to_market_cap,
-            CASE WHEN cf.fact_name = 'NetCashProvidedByUsedInInvestingActivities' THEN cf.value / mc.market_cap END AS cash_flow_investing_to_market_cap,
-            CASE WHEN cf.fact_name = 'CommonStockSharesAuthorized' THEN cf.value END AS shares_authorized,
-            CASE WHEN cf.fact_name = 'ShareBasedCompensation' THEN cf.value / mc.market_cap END AS share_based_compensation_to_market_cap,
-            CASE WHEN cf.fact_name = 'CommonStockValue' THEN cf.value / mc.market_cap END AS stock_value_to_market_cap,
-            CASE WHEN cf.fact_name = 'Liabilities' THEN cf.value / mc.market_cap END AS liabilities_to_market_cap,
-            CASE WHEN cf.fact_name = 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest' THEN cf.value / mc.market_cap END AS income_loss_to_market_cap,
-            CASE WHEN cf.fact_name = 'ProfitLoss' THEN cf.value / mc.market_cap END AS profit_loss_to_market_cap,
-            CASE WHEN cf.fact_name = 'CommonStockSharesIssued' THEN cf.value END AS shares_issued,
-            CASE WHEN cf.fact_name = 'PropertyPlantAndEquipmentNet' THEN cf.value / mc.market_cap END AS ppe_to_market_cap
-        FROM financials.company_facts cf
-        JOIN financials.market_caps mc ON cf.symbol_id = mc.symbol_id
-        WHERE cf.fact_name IN (
-            'NetIncomeLoss', 'StockholdersEquity', 'EarningsPerShareBasic', 'OperatingIncomeLoss',
-            'CashAndCashEquivalentsAtCarryingValue', 'EarningsPerShareDiluted', 'IncomeTaxExpenseBenefit',
-            'WeightedAverageNumberOfSharesOutstandingBasic', 'WeightedAverageNumberOfDilutedSharesOutstanding',
-            'Assets', 'LiabilitiesAndStockholdersEquity', 'ComprehensiveIncomeNetOfTax', 'InterestExpense',
-            'RetainedEarningsAccumulatedDeficit', 'NetCashProvidedByUsedInOperatingActivities',
-            'NetCashProvidedByUsedInFinancingActivities', 'NetCashProvidedByUsedInInvestingActivities',
-            'CommonStockSharesAuthorized', 'ShareBasedCompensation', 'CommonStockValue', 'Liabilities',
-            'IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest',
-            'ProfitLoss', 'CommonStockSharesIssued', 'PropertyPlantAndEquipmentNet'
-        );
-        """
-        await self.db_connector.run_query(query)
 
     async def most_common_facts(self, top_n: int = 25) -> pd.DataFrame:
         """
