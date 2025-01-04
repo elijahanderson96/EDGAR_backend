@@ -121,5 +121,30 @@ class FactFrequencyAnalyzer:
 
 
     async def operating_cash_flow_to_liabilities(self) -> pd.DataFrame:
-        """This will return the operating cash flow to liabilities ratio for all companies that report these
-        two metrics. A higher ratio is better."""
+        """
+        This will return the operating cash flow to liabilities ratio for all companies that report these
+        two metrics. A higher ratio is better.
+
+        Returns:
+        - pd.DataFrame: DataFrame with symbols and their operating cash flow to liabilities ratio.
+        """
+        query = """
+        WITH cash_flow AS (
+            SELECT symbol_id, value AS operating_cash_flow
+            FROM financials.company_facts
+            WHERE fact_name = 'OperatingCashFlow'
+        ),
+        liabilities AS (
+            SELECT symbol_id, value AS total_liabilities
+            FROM financials.company_facts
+            WHERE fact_name = 'TotalLiabilities'
+        )
+        SELECT s.symbol,
+               (cf.operating_cash_flow / li.total_liabilities) AS cash_flow_to_liabilities_ratio
+        FROM cash_flow cf
+        JOIN liabilities li ON cf.symbol_id = li.symbol_id
+        JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
+        WHERE li.total_liabilities > 0
+        ORDER BY cash_flow_to_liabilities_ratio DESC;
+        """
+        return await self.db_connector.run_query(query, return_df=True)
