@@ -15,10 +15,10 @@ def manage_db_connection(func):
 
     return wrapper
 
+class FactFrequencyAnalyzer:
     def __init__(self):
         self.db_connector = db_connector
-
-    fact_names = set()
+        self.fact_names = set()
 
     @manage_db_connection
     async def fetch_distinct_fact_names(self) -> set:
