@@ -71,31 +71,34 @@ class FactFrequencyAnalyzer:
         """
         query = """
         CREATE MATERIALIZED VIEW financials.market_caps AS
-WITH max_date_cf AS (
-    SELECT cf.symbol_id,
-           MAX(cf.filed_date_id) AS latest_filed_date_id,
-           (SELECT cf_inner.value
-            FROM financials.company_facts cf_inner
-            WHERE cf_inner.symbol_id = cf.symbol_id
---               AND cf_inner.filed_date_id = MAX(cf.filed_date_id)
-              AND cf_inner.end_date_id = MAX(cf.end_date_id)
-              AND cf_inner.fact_name IN ('EntityCommonStockSharesOutstanding', 'CommonStockSharesOutstanding')
-            LIMIT 1
-           ) AS shares_outstanding
-    FROM financials.company_facts cf
-    WHERE cf.fact_name IN ('EntityCommonStockSharesOutstanding', 'CommonStockSharesOutstanding')
-    GROUP BY cf.symbol_id
-)
-SELECT d.date,
-       s.symbol,
-       (mcf.shares_outstanding * hd.close) AS market_cap,
-       mcf.shares_outstanding as shares,
-       hd.close as price
-FROM max_date_cf mcf
-JOIN financials.historical_data hd ON mcf.symbol_id = hd.symbol_id
-JOIN metadata.dates d ON d.date_id = hd.date_id
-JOIN metadata.symbols s ON mcf.symbol_id = s.symbol_id
-ORDER BY s.symbol, d.date;"""
+        WITH max_date_cf AS (
+            SELECT
+                cf.symbol_id,
+                MAX(cf.filed_date_id) AS latest_filed_date_id,
+                (
+                    SELECT cf_inner.value
+                    FROM financials.company_facts cf_inner
+                    WHERE cf_inner.symbol_id = cf.symbol_id
+                    AND cf_inner.end_date_id = MAX(cf.end_date_id)
+                    AND cf_inner.fact_name IN ('EntityCommonStockSharesOutstanding', 'CommonStockSharesOutstanding')
+                    LIMIT 1
+                ) AS shares_outstanding
+            FROM financials.company_facts cf
+            WHERE cf.fact_name IN ('EntityCommonStockSharesOutstanding', 'CommonStockSharesOutstanding')
+            GROUP BY cf.symbol_id
+        )
+        SELECT
+            d.date,
+            s.symbol,
+            (mcf.shares_outstanding * hd.close) AS market_cap,
+            mcf.shares_outstanding AS shares,
+            hd.close AS price
+        FROM max_date_cf mcf
+        JOIN financials.historical_data hd ON mcf.symbol_id = hd.symbol_id
+        JOIN metadata.dates d ON d.date_id = hd.date_id
+        JOIN metadata.symbols s ON mcf.symbol_id = s.symbol_id
+        ORDER BY s.symbol, d.date;
+        """
         return await self.db_connector.run_query(query, params=[symbol], return_df=True)
 
 
