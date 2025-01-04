@@ -129,22 +129,24 @@ class FactFrequencyAnalyzer:
         - pd.DataFrame: DataFrame with symbols and their operating cash flow to liabilities ratio.
         """
         query = """
-        WITH cash_flow AS (
-            SELECT symbol_id, value AS operating_cash_flow
+        WITH ranked_cash_flow AS (
+            SELECT symbol_id, end_date_id, value AS operating_cash_flow,
+                   ROW_NUMBER() OVER (PARTITION BY symbol_id, end_date_id ORDER BY (end_date_id - start_date_id)) AS rn
             FROM financials.company_facts
             WHERE fact_name = 'NetCashProvidedByUsedInOperatingActivities'
         ),
-        liabilities AS (
-            SELECT symbol_id, value AS total_liabilities
+        ranked_liabilities AS (
+            SELECT symbol_id, end_date_id, value AS total_liabilities,
+                   ROW_NUMBER() OVER (PARTITION BY symbol_id, end_date_id ORDER BY (end_date_id - start_date_id)) AS rn
             FROM financials.company_facts
             WHERE fact_name = 'Liabilities'
         )
         SELECT s.symbol,
                (cf.operating_cash_flow / li.total_liabilities) AS cash_flow_to_liabilities_ratio
-        FROM cash_flow cf
-        JOIN liabilities li ON cf.symbol_id = li.symbol_id
+        FROM ranked_cash_flow cf
+        JOIN ranked_liabilities li ON cf.symbol_id = li.symbol_id AND cf.end_date_id = li.end_date_id
         JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
-        WHERE li.total_liabilities > 0
+        WHERE cf.rn = 1 AND li.rn = 1 AND li.total_liabilities > 0
         ORDER BY cash_flow_to_liabilities_ratio DESC;
         """
         return await self.db_connector.run_query(query, return_df=True)
