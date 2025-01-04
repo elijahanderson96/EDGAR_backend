@@ -1,26 +1,12 @@
 import pandas as pd
 from database.async_database import db_connector
-from functools import wraps
 
-
-def manage_db_connection(func):
-    @wraps(func)
-    async def wrapper(self, *args, **kwargs):
-        await self.db_connector.initialize()
-        try:
-            result = await func(self, *args, **kwargs)
-        finally:
-            await self.db_connector.close()
-        return result
-
-    return wrapper
 
 class FactFrequencyAnalyzer:
     def __init__(self):
         self.db_connector = db_connector
         self.fact_names = set()
 
-    @manage_db_connection
     async def fetch_distinct_fact_names(self) -> set:
         """
         Fetch all distinct fact names from the company facts table and set them as a class attribute.
@@ -36,7 +22,6 @@ class FactFrequencyAnalyzer:
         self.fact_names = set(result['fact_name'])
         return self.fact_names
 
-    @manage_db_connection
     async def check_fact_distribution(self, fact_name: str) -> pd.DataFrame:
         """
         Check which symbols have reported a specific fact and which have not, and determine the percentage of filings
@@ -72,7 +57,6 @@ class FactFrequencyAnalyzer:
         """
         return await self.db_connector.run_query(query, params=[fact_name], return_df=True)
 
-    @manage_db_connection
     async def calculate_market_cap(self, symbol: str) -> pd.DataFrame:
         """
         Calculate the market capitalization for a given symbol based on the number of outstanding shares
@@ -116,8 +100,7 @@ class FactFrequencyAnalyzer:
         """
         return await self.db_connector.run_query(query, params=[symbol], return_df=True)
 
-    @manage_db_connection
-    async def most_common_facts(self, top_n: int = 25) -> pd.DataFrame:
+    async def most_common_facts(self, top_n: int = 50) -> pd.DataFrame:
         """
         Identify the most commonly reported fact names within the company facts table.
 
@@ -135,3 +118,8 @@ class FactFrequencyAnalyzer:
         LIMIT $1;
         """
         return await self.db_connector.run_query(query, params=[top_n], return_df=True)
+
+
+    async def operating_cash_flow_to_liabilities(self) -> pd.DataFrame:
+        """This will return the operating cash flow to liabilities ratio for all companies that report these
+        two metrics. A higher ratio is better."""
