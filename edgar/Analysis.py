@@ -149,7 +149,6 @@ class FactFrequencyAnalyzer:
         JOIN ranked_liabilities li ON cf.symbol_id = li.symbol_id AND cf.end_date_id = li.end_date_id
         JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
         JOIN metadata.dates d ON cf.end_date_id = d.date_id
-        JOIN metadata.dates d ON cf.end_date_id = d.date_id
         WHERE cf.rn = 1 AND li.rn = 1 AND li.total_liabilities > 0
         ORDER BY cash_flow_to_liabilities_ratio DESC;
         """
