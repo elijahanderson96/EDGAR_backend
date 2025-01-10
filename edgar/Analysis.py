@@ -120,36 +120,53 @@ class FactFrequencyAnalyzer:
         """
         return await self.db_connector.run_query(query, params=[top_n], return_df=True)
 
-
-    async def operating_cash_flow_to_liabilities(self) -> pd.DataFrame:
+    async def cash_flow_analysis(self, cash_flow_type: str = "operating") -> pd.DataFrame:
         """
-        This will return the operating cash flow to liabilities ratio for all companies that report these
-        two metrics. A higher ratio is better.
+        Analyze the cash flow to liabilities ratio for all companies based on the specified cash flow type.
+
+        Parameters:
+        - cash_flow_type (str): Type of cash flow to use. Options are "operating", "investing", "financing", or "total" (sums all three).
 
         Returns:
-        - pd.DataFrame: DataFrame with symbols and their operating cash flow to liabilities ratio.
+        - pd.DataFrame: DataFrame with symbols, end dates, and cash flow to liabilities ratios.
         """
-        query = """
-        WITH ranked_cash_flow AS (
-            SELECT symbol_id, end_date_id, value AS operating_cash_flow,
-                   ROW_NUMBER() OVER (PARTITION BY symbol_id, end_date_id ORDER BY (end_date_id - start_date_id)) AS rn
+        cash_flow_mapping = {
+            "operating": "NetCashProvidedByUsedInOperatingActivities",
+            "investing": "NetCashProvidedByUsedInInvestingActivities",
+            "financing": "NetCashProvidedByUsedInFinancingActivities",
+        }
+        cash_flow_filter = "IN ('NetCashProvidedByUsedInOperatingActivities', 'NetCashProvidedByUsedInInvestingActivities', 'NetCashProvidedByUsedInFinancingActivities')" if cash_flow_type == "total" else f"= '{cash_flow_mapping[cash_flow_type]}'"
+
+        query = f"""
+        WITH latest_cash_flow AS (
+            SELECT symbol_id, end_date_id, 
+                   SUM(value) AS cash_flow,
+                   ROW_NUMBER() OVER (PARTITION BY symbol_id, end_date_id ORDER BY filed_date_id DESC, start_date_id DESC) AS rn
             FROM financials.company_facts
-            WHERE fact_name = 'NetCashProvidedByUsedInOperatingActivities'
+            WHERE fact_name {cash_flow_filter}
+            GROUP BY symbol_id, end_date_id, filed_date_id, start_date_id
         ),
-        ranked_liabilities AS (
-            SELECT symbol_id, end_date_id, value AS total_liabilities,
-                   ROW_NUMBER() OVER (PARTITION BY symbol_id, end_date_id ORDER BY (end_date_id - start_date_id)) AS rn
+        latest_liabilities AS (
+            SELECT symbol_id, end_date_id, 
+                   value AS total_liabilities,
+                   ROW_NUMBER() OVER (PARTITION BY symbol_id, end_date_id ORDER BY filed_date_id DESC, start_date_id DESC) AS rn
             FROM financials.company_facts
             WHERE fact_name = 'Liabilities'
+              AND value > 0
         )
         SELECT s.symbol,
                d.date AS end_date,
-               (cf.operating_cash_flow / li.total_liabilities) AS cash_flow_to_liabilities_ratio
-        FROM ranked_cash_flow cf
-        JOIN ranked_liabilities li ON cf.symbol_id = li.symbol_id AND cf.end_date_id = li.end_date_id
-        JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
-        JOIN metadata.dates d ON cf.end_date_id = d.date_id
-        WHERE cf.rn = 1 AND li.rn = 1 AND li.total_liabilities > 0
+               (cf.cash_flow / li.total_liabilities) AS cash_flow_to_liabilities_ratio
+        FROM latest_cash_flow cf
+        JOIN latest_liabilities li 
+            ON cf.symbol_id = li.symbol_id AND cf.end_date_id = li.end_date_id
+        JOIN metadata.symbols s 
+            ON cf.symbol_id = s.symbol_id
+        JOIN metadata.dates d 
+            ON cf.end_date_id = d.date_id
+        WHERE cf.rn = 1 AND li.rn = 1
         ORDER BY cash_flow_to_liabilities_ratio DESC;
         """
         return await self.db_connector.run_query(query, return_df=True)
+
+

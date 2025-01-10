@@ -7,7 +7,6 @@ import asyncio
 import aiofiles
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 from tqdm.asyncio import tqdm as async_tqdm
 import aiohttp
 import multiprocessing
