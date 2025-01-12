@@ -224,6 +224,11 @@ class DataRefresher:
 
         df = df.dropna(subset=['symbol_id'])
         df = df.replace({np.nan: None})
+
+        # Ensure integer fields are properly set
+        integer_fields = ['symbol_id', 'start_date_id', 'end_date_id', 'filed_date_id']
+        for field in integer_fields:
+            df[field] = df[field].apply(lambda x: int(x) if pd.notnull(x) else None)
         return df
 
     async def insert_dataframe_to_db(self, df: pd.DataFrame):
