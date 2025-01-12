@@ -231,7 +231,7 @@ class DataRefresher:
         output = io.BytesIO()
         df.to_csv(output, sep='\t', index=False, header=False, na_rep='\\N', encoding='utf-8')  # PostgreSQL expects '\\N' for NULLs
         output.seek(0)
-        output = io.BytesIO(output.getvalue().encode('utf-8'))
+        output = io.BytesIO(output.getvalue().decode('utf-8'))
 
         async with db_connector.pool.acquire() as connection:
             try:
