@@ -263,21 +263,31 @@ class DataRefresher:
 
 # Async-compatible main method
 async def main():
-    cik = "0000006845"  # Example CIK
-    metadata = SubmissionsMetadata(cik)
-    xbrl_filings = set(metadata.get_filings())
+    # Fetch all CIKs from the symbols table
+    symbols_df = normal_connector.run_query("SELECT cik FROM metadata.symbols", return_df=True)
+    ciks = symbols_df['cik'].astype(str).tolist()
 
     await db_connector.initialize()
-    db_data_analyzer = DatabaseData(cik, xbrl_filings)
-    db_data = await db_data_analyzer.cross_reference_accns()
 
-    missing_accns = xbrl_filings - db_data
-    data_getter = DataRefresher(cik)
-    data = data_getter.get_facts_by_accns(missing_accns)
-    formatted_data = data_getter.format_facts_to_dataframe(data)
-    await data_getter.insert_dataframe_to_db(formatted_data)
+    # Use TQDM to monitor progress
+    with async_tqdm(total=len(ciks), desc="Processing CIKs") as pbar:
+        for cik in ciks:
+            metadata = SubmissionsMetadata(cik)
+            xbrl_filings = set(metadata.get_filings())
+
+            db_data_analyzer = DatabaseData(cik, xbrl_filings)
+            db_data = await db_data_analyzer.cross_reference_accns()
+
+            missing_accns = xbrl_filings - db_data
+            data_getter = DataRefresher(cik)
+            data = data_getter.get_facts_by_accns(missing_accns)
+            formatted_data = data_getter.format_facts_to_dataframe(data)
+            await data_getter.insert_dataframe_to_db(formatted_data)
+
+            # Update progress bar
+            pbar.update(1)
+
     await db_connector.close()
-    return missing_accns, len(xbrl_filings), len(db_data), data, formatted_data
 
 
 # Entry point
