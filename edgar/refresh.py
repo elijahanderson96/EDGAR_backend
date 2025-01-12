@@ -73,8 +73,85 @@ class DatabaseData:
         self.data = await db_connector.run_query(q, params=[self.cik])
 
         return set(self.data['accn'])
-        # Represents the xbrl data that does not currently exist in the database and needs to be fetched.
-        # return set(self.accns) - set(self.data['accn'])
+
+
+class DataRefresher:
+    """
+    Class to fetch and parse company facts data from the SEC API for a specific CIK and a set of accns.
+    """
+
+    BASE_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+
+    def __init__(self, cik: str):
+        """
+        Initialize the CompanyFacts object with a given CIK.
+
+        Args:
+            cik (str): Central Index Key (CIK) for the company.
+        """
+        self.cik = cik.zfill(10)  # Pad CIK to 10 digits
+        self.data = None
+
+    def fetch_facts(self):
+        """
+        Fetch data from the SEC endpoint and store it in the class attribute.
+        """
+        url = self.BASE_URL.format(cik=self.cik)
+        try:
+            response = requests.get(url, headers={"User-Agent": "YourAppName/1.0 (your_email@example.com)"})
+            response.raise_for_status()  # Raise HTTPError for bad responses
+            self.data = response.json()
+        except requests.RequestException as e:
+            logging.error(f"Error fetching data: {e}")
+            self.data = None
+
+    def get_facts_by_accns(self, accns: set):
+        """
+        Extract facts for the given set of accession numbers.
+
+        Args:
+            accns (set): A set of accession numbers to filter facts by.
+
+        Returns:
+            dict: Facts filtered by the accession numbers.
+        """
+        if not self.data:
+            logging.warning("Data is not loaded. Fetching facts first.")
+            self.fetch_facts()
+
+        if not self.data:
+            logging.error("Failed to load data. Cannot process facts.")
+            return {}
+
+        filtered_facts = {}
+
+        # Iterate over the facts to filter by accns
+        for taxonomy, concepts in self.data.get("facts", {}).items():
+            for concept_name, concept_data in concepts.items():
+                units = concept_data.get("units", {})
+                for unit, instances in units.items():
+                    for instance in instances:
+                        if instance.get("accn") in accns:  # Match against the set of accns
+                            if concept_name not in filtered_facts:
+                                filtered_facts[concept_name] = {
+                                    "label": concept_data.get("label"),
+                                    "description": concept_data.get("description"),
+                                    "instances": []
+                                }
+                            # Append the instance data
+                            filtered_facts[concept_name]["instances"].append({
+                                "unit": unit,
+                                "fy": instance.get("fy"),
+                                "fp": instance.get("fp"),
+                                "value": instance.get("val"),
+                                "start_date": instance.get("start"),
+                                "end_date": instance.get("end"),
+                                "form": instance.get("form"),
+                                "filed": instance.get("filed"),
+                                "accn": instance.get("accn"),
+                            })
+
+        return filtered_facts
 
 
 # Async-compatible main method
@@ -89,7 +166,10 @@ async def main():
     await db_connector.close()
 
     missing_accns = xbrl_filings - db_data
-    return missing_accns, len(xbrl_filings), len(db_data)
+    data_getter = DataRefresher(cik)
+    data = data_getter.get_facts_by_accns(missing_accns)
+
+    return missing_accns, len(xbrl_filings), len(db_data), data
 
 
 # Entry point
