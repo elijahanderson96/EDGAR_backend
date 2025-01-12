@@ -228,9 +228,10 @@ class DataRefresher:
 
     async def insert_dataframe_to_db(self, df: pd.DataFrame):
         """Insert a dataframe into the database using copy_to_table."""
-        output = io.StringIO()
-        df.to_csv(output, sep='\t', index=False, header=False, na_rep='\\N')  # PostgreSQL expects '\\N' for NULLs
+        output = io.BytesIO()
+        df.to_csv(output, sep='\t', index=False, header=False, na_rep='\\N', encoding='utf-8')  # PostgreSQL expects '\\N' for NULLs
         output.seek(0)
+        output = io.BytesIO(output.getvalue().encode('utf-8'))
 
         async with db_connector.pool.acquire() as connection:
             try:
