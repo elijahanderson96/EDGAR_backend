@@ -175,8 +175,9 @@ class DataRefresher:
                     "accn": instance["accn"]
                 }
                 records.append(record)
-        
+
         df = pd.DataFrame(records)
+        df['cik'] = self.cik
         return self.transform_dataframe(df)
 
     def transform_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -257,13 +258,14 @@ async def main():
     await db_connector.initialize()
     db_data_analyzer = DatabaseData(cik, xbrl_filings)
     db_data = await db_data_analyzer.cross_reference_accns()
-    await db_connector.close()
 
     missing_accns = xbrl_filings - db_data
     data_getter = DataRefresher(cik)
     data = data_getter.get_facts_by_accns(missing_accns)
-
-    return missing_accns, len(xbrl_filings), len(db_data), data
+    formatted_data = data_getter.format_facts_to_dataframe(data)
+    await data_getter.insert_dataframe_to_db(formatted_data)
+    await db_connector.close()
+    return missing_accns, len(xbrl_filings), len(db_data), data, formatted_data
 
 
 # Entry point
