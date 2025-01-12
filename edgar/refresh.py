@@ -2,6 +2,7 @@ import asyncio
 import requests
 import logging
 import io
+from tqdm.asyncio import tqdm as async_tqdm
 import pandas as pd
 import numpy as np
 
