@@ -222,20 +222,27 @@ class DataRefresher:
         df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id',
                  'fiscal_year', 'fiscal_period', 'form', 'value', 'accn']]
 
+        # Drop rows where symbol_id is missing
         df = df.dropna(subset=['symbol_id'])
-        df = df.replace({np.nan: None})
 
-        # Ensure integer fields are properly set
-        integer_fields = ['symbol_id', 'start_date_id', 'end_date_id', 'filed_date_id']
-        for field in integer_fields:
-            df[field] = df[field].apply(lambda x: int(x) if pd.notnull(x) else None)
+        # Explicitly cast integer columns to nullable integers, keeping NaN as None
+        int_columns = ['symbol_id', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year']
+        for col in int_columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')  # Nullable integer type
+
+        # Replace NaN with None for all nullable fields
+        df = df.replace({pd.NA: None})
         return df
 
     async def insert_dataframe_to_db(self, df: pd.DataFrame):
-        """Insert a dataframe into the database using copy_to_table."""
+        """Insert a DataFrame into the database using copy_to_table."""
+        # Replace NaN with None for database compatibility
+
+        # Create a BytesIO stream for binary output
         output = io.BytesIO()
-        df.to_csv(output, sep='\t', index=False, header=False, na_rep='\\N', encoding='utf-8')  # PostgreSQL expects '\\N' for NULLs
-        output.seek(0)
+        # Write DataFrame to CSV format
+        df.to_csv(output, sep='\t', index=False, header=False, na_rep=None, encoding='utf-8')  # Empty strings for NULL
+        output.seek(0)  # Reset the stream position
 
         async with db_connector.pool.acquire() as connection:
             try:
