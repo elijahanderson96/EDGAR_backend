@@ -1,8 +1,12 @@
 import asyncio
 import requests
 import logging
+import io
+import pandas as pd
+import numpy as np
 
 from database.async_database import db_connector
+from database.database import db_connector as normal_connector
 
 
 class SubmissionsMetadata:
@@ -152,6 +156,96 @@ class DataRefresher:
                             })
 
         return filtered_facts
+
+    def format_facts_to_dataframe(self, facts: dict) -> pd.DataFrame:
+        """Format the facts into a DataFrame similar to process_json_files_optimized."""
+        records = []
+        for concept_name, concept_data in facts.items():
+            for instance in concept_data["instances"]:
+                record = {
+                    "fact_name": concept_name,
+                    "unit": instance["unit"],
+                    "fiscal_year": instance["fy"],
+                    "fiscal_period": instance["fp"],
+                    "value": instance["value"],
+                    "start_date": instance["start_date"],
+                    "end_date": instance["end_date"],
+                    "form": instance["form"],
+                    "filed": instance["filed"],
+                    "accn": instance["accn"]
+                }
+                records.append(record)
+        
+        df = pd.DataFrame(records)
+        return self.transform_dataframe(df)
+
+    def transform_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Transform the DataFrame with required merging and cleaning logic."""
+        symbols_df = normal_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
+        dates_df = normal_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
+
+        required_columns = ['start_date', 'end_date', 'filed']
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = None
+
+        df['start_date'] = pd.to_datetime(df['start_date'], errors='coerce')
+        df['end_date'] = pd.to_datetime(df['end_date'], errors='coerce')
+        df['filed'] = pd.to_datetime(df['filed'], errors='coerce')
+
+        symbols_df['cik'] = symbols_df['cik'].astype(str)
+        dates_df['date'] = pd.to_datetime(dates_df['date'])
+
+        df_merged_symbols = df.merge(symbols_df, on='cik', how='left')
+
+        df_merged_start_date = df_merged_symbols.merge(
+            dates_df.rename(columns={'date': 'start_date'}), on='start_date', how='left'
+        ).rename(columns={'date_id': 'start_date_id'})
+
+        df_merged_end_date = df_merged_start_date.merge(
+            dates_df.rename(columns={'date': 'end_date'}), on='end_date', how='left'
+        ).rename(columns={'date_id': 'end_date_id'})
+
+        df_merged_filed_date = df_merged_end_date.merge(
+            dates_df.rename(columns={'date': 'filed'}), on='filed', how='left'
+        ).rename(columns={'date_id': 'filed_date_id'})
+
+        df = df_merged_filed_date.rename(columns={
+            'fy': 'fiscal_year',
+            'fp': 'fiscal_period',
+            'form': 'form',
+            'val': 'value',
+            'accn': 'accn'
+        })
+
+        df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id',
+                 'fiscal_year', 'fiscal_period', 'form', 'value', 'accn']]
+
+        df = df.dropna(subset=['symbol_id'])
+        df = df.replace({np.nan: None})
+        return df
+
+    async def insert_dataframe_to_db(self, df: pd.DataFrame):
+        """Insert a dataframe into the database using copy_to_table."""
+        output = io.StringIO()
+        df.to_csv(output, sep='\t', index=False, header=False, na_rep='\\N')  # PostgreSQL expects '\\N' for NULLs
+        output.seek(0)
+
+        async with db_connector.pool.acquire() as connection:
+            try:
+                logging.info("Starting data insertion using copy_to_table...")
+                await connection.copy_to_table(
+                    'company_facts',
+                    schema_name='financials',
+                    source=output,
+                    format='csv',
+                    delimiter='\t',
+                    columns=df.columns.tolist()
+                )
+                logging.info(f"Successfully inserted {len(df)} records.")
+            except Exception as e:
+                logging.error(f"Error during copy_to_table operation: {e}")
+                raise
 
 
 # Async-compatible main method
