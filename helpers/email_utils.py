@@ -1,6 +1,8 @@
+import logging
 import os
 import re
 import smtplib
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -120,3 +122,49 @@ def send_validation_email(dataframes, recipient_email, image_paths=None):
         print(f"Error sending email: {str(e)}")
     finally:
         server.quit()
+
+
+def send_log_email(log_file_path, recipient_email):
+    smtp_server = os.getenv("SMTP_SERVER")
+    smtp_port = int(os.getenv("SMTP_PORT"))
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    sender_email = os.getenv("SENDER_EMAIL")
+    todays_date = datetime.now().strftime("%m-%d-%Y")
+
+    # Check if the log file exists
+    if not os.path.exists(log_file_path):
+        logging.error(f"Log file not found: {log_file_path}")
+        return
+
+    # Create email message
+    message = MIMEMultipart()
+    message["From"] = sender_email
+    message["To"] = recipient_email
+    message["Subject"] = f"Daily log files for {todays_date} are attached"
+
+    # Email body
+    message.attach(MIMEText(f"Daily log files for {todays_date} are attached.", "plain"))
+
+    # Attach the log file
+    with open(log_file_path, "rb") as log_file:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(log_file.read())
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(log_file_path)}")
+        message.attach(part)
+
+    try:
+        # Create a secure TLS connection
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        server.sendmail(sender_email, recipient_email, message.as_string())
+        logging.info(f"Log email sent to {recipient_email}")
+    except Exception as e:
+        logging.error(f"Error sending email: {str(e)}")
+    finally:
+        server.quit()
+
+# Example usage
+# send_log_email("/path/to/your_log.log", "elijahanderson96@gmail.com")

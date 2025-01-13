@@ -1,13 +1,17 @@
-import asyncio
-import requests
-import logging
-import io
-from tqdm.asyncio import tqdm as async_tqdm
-import pandas as pd
-import numpy as np
+import os
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
+import requests
+import io
+import asyncio
+import logging
+
+import pandas as pd
+from tqdm.asyncio import tqdm
 from database.async_database import db_connector
 from database.database import db_connector as normal_connector
+from helpers.email_utils import send_log_email
 
 
 class SubmissionsMetadata:
@@ -37,7 +41,7 @@ class SubmissionsMetadata:
         url = self.BASE_URL.format(cik=self.cik)
 
         try:
-            response = requests.get(url, headers={"User-Agent": "YourAppName/1.0 (your_email@example.com)"})
+            response = requests.get(url, headers={"User-Agent": "Elijah Anderson (elijahanderson96@gmail.com)"})
             response.raise_for_status()  # Raise HTTPError for bad responses
 
             data = response.json()
@@ -103,7 +107,7 @@ class DataRefresher:
         """
         url = self.BASE_URL.format(cik=self.cik)
         try:
-            response = requests.get(url, headers={"User-Agent": "YourAppName/1.0 (your_email@example.com)"})
+            response = requests.get(url, headers={"User-Agent": "Elijah Anderson (elijahanderson96@gmail.com)"})
             response.raise_for_status()  # Raise HTTPError for bad responses
             self.data = response.json()
         except requests.RequestException as e:
@@ -120,9 +124,7 @@ class DataRefresher:
         Returns:
             dict: Facts filtered by the accession numbers.
         """
-        if not self.data:
-            logging.warning("Data is not loaded. Fetching facts first.")
-            self.fetch_facts()
+        self.fetch_facts()
 
         if not self.data:
             logging.error("Failed to load data. Cannot process facts.")
@@ -262,35 +264,107 @@ class DataRefresher:
                 raise
 
 
-# Async-compatible main method
-async def main():
-    # Fetch all CIKs from the symbols table
-    symbols_df = normal_connector.run_query("SELECT cik FROM metadata.symbols", return_df=True)
-    ciks = symbols_df['cik'].astype(str).tolist()
+async def get_all_ciks():
+    query = """
+        SELECT cik, symbol
+        FROM metadata.symbols
+        ORDER BY cik
+    """
+    ciks_df = await db_connector.run_query(query, return_df=True)
+    return list(zip(ciks_df['cik'], ciks_df['symbol']))
 
-    await db_connector.initialize()
 
-    # Use TQDM to monitor progress
-    with async_tqdm(total=len(ciks), desc="Processing CIKs") as pbar:
-        for cik in ciks:
-            metadata = SubmissionsMetadata(cik)
-            xbrl_filings = set(metadata.get_filings())
+async def process_cik(cik, symbol):
+    """Process data for a single CIK."""
+    try:
+        # Fetch filings metadata
+        metadata = SubmissionsMetadata(cik)
+        xbrl_filings = set(metadata.get_filings())
+        if not xbrl_filings:
+            logging.warning(f"No XBRL filings found for CIK {cik}, Symbol: {symbol}")
+            return cik, 0, 0, None
 
-            db_data_analyzer = DatabaseData(cik, xbrl_filings)
-            db_data = await db_data_analyzer.cross_reference_accns()
+        # Cross-reference ACCNs with database
+        db_data_analyzer = DatabaseData(cik, xbrl_filings)
+        db_data = await db_data_analyzer.cross_reference_accns()
 
-            missing_accns = xbrl_filings - db_data
-            data_getter = DataRefresher(cik)
-            data = data_getter.get_facts_by_accns(missing_accns)
+        missing_accns = xbrl_filings - db_data
+
+        if not missing_accns:
+            logging.info(f"No missing ACCNs for CIK {cik}, Symbol: {symbol}")
+            return cik, len(xbrl_filings), len(db_data), None
+
+        # Fetch and format data
+        data_getter = DataRefresher(cik)
+        data = data_getter.get_facts_by_accns(missing_accns)
+
+        if data:
             formatted_data = data_getter.format_facts_to_dataframe(data)
             await data_getter.insert_dataframe_to_db(formatted_data)
+        else:
+            logging.info(f"No new data found for CIK {cik}, Symbol: {symbol}")
 
-            # Update progress bar
-            pbar.update(1)
+        return cik, len(xbrl_filings), len(db_data), data
 
-    await db_connector.close()
+    except Exception as e:
+        logging.error(f"Error processing CIK {cik}, Symbol: {symbol}: {e}")
+        return cik, 0, 0, None
 
 
-# Entry point
+async def main():
+    """Main function to process all CIKs."""
+    await db_connector.initialize()
+
+    try:
+        cik_symbol_pairs = await get_all_ciks()  # List of (cik, symbol)
+        results = []
+
+        for cik, symbol in tqdm(cik_symbol_pairs, desc="Processing CIKs"):
+            result = await process_cik(cik, symbol)
+            results.append(result)
+
+        # Log summary of processing
+        successful = sum(1 for _, _, _, data in results if data)
+        logging.info(f"Processing completed. Inserted data for: {successful}/{len(cik_symbol_pairs)}")
+
+    except Exception as e:
+        logging.error(f"Error in main: {e}")
+
+    finally:
+        await db_connector.close()
+
+
+def setup_logging():
+    todays_date = datetime.now().strftime("%m-%d-%Y")
+    log_dir = os.path.join("./logs", todays_date)
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "execution.log")
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=2),
+            logging.StreamHandler()
+        ]
+    )
+    return log_file
+
+
+# Wrapper Function
+def execute_with_logging():
+    log_file = setup_logging()
+    recipient_email = os.getenv("LOG_RECIPIENT_EMAIL", "elijahanderson96@gmail.com")
+    try:
+        logging.info("Script execution started.")
+        asyncio.run(main())
+        logging.info("Script executed successfully.")
+        send_log_email(log_file, recipient_email)
+    except Exception as e:
+        logging.error(f"Script execution failed: {e}")
+        send_log_email(log_file, recipient_email)  # Still send logs in case of failure
+        raise
+
+
 if __name__ == "__main__":
-    missing_accns = asyncio.run(main())
+    execute_with_logging()
