@@ -9,5 +9,7 @@ services:
       - "443:443"
     volumes:
       - .:/app
-      - /etc/letsencrypt/live/api.equityexplorer.io:/etc/letsencrypt/live/api.equityexplorer.io:ro
+      - /etc/letsencrypt/:/etc/letsencrypt:ro
     network_mode: "bridge"
+    env_file:
+      - ./config/.env
