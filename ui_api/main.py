@@ -10,6 +10,8 @@ from ui_api.routes.account import account_router
 from ui_api.routes.auth import auth_router
 from ui_api.routes.data_catalogue import stocks_router
 from ui_api.routes.financials import financials_router
+from ui_api.routes.home import home_router
+
 from database.async_database import db_connector
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -164,3 +166,4 @@ app.include_router(financials_router)
 app.include_router(account_router)
 app.include_router(metadata_router)
 app.include_router(stocks_router, prefix='/stocks')
+app.include_router(home_router)

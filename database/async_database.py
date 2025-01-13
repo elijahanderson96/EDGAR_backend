@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 from typing import Any, Dict, List, Optional, Union
 import logging
@@ -55,8 +54,6 @@ class AsyncpgConnector:
             except Exception as e:
                 self.logger.error(f"Error occurred while executing query: {e}")
                 raise e
-
-    from typing import List
 
     async def drop_existing_rows(
             self,

@@ -149,6 +149,7 @@ columns = """
             id SERIAL PRIMARY KEY,
             symbol_id INT REFERENCES metadata.symbols(symbol_id),
             fact_name VARCHAR(255),
+            unit VARCHAR(31),
             start_date_id INT REFERENCES metadata.dates(date_id),
             end_date_id INT REFERENCES metadata.dates(date_id),
             filed_date_id INT REFERENCES metadata.dates(date_id),
