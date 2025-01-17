@@ -110,3 +110,4 @@ yolo_dataset
 yolo_table_detection
 runs
 .aider*
+digital_ocean_creds.txt
