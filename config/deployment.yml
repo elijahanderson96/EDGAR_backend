@@ -48,10 +48,10 @@ spec:
             path: /docs
             port: 80
             scheme: HTTP
-          initialDelaySeconds: 5
+          initialDelaySeconds: 25
           periodSeconds: 10
           successThreshold: 1
-          timeoutSeconds: 2
+          timeoutSeconds: 20
         resources: {}
       dnsPolicy: ClusterFirst
       restartPolicy: Always
