@@ -1,65 +1,28 @@
-name: Deploy and Build
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:  # Allows manual triggering from the GitHub Actions tab
 
 jobs:
-  deploy:
-    name: Deploy to DigitalOcean Droplets
+  build-and-deploy:
     runs-on: ubuntu-latest
 
-    env:
-      DROPLET_1_IP: ${{ secrets.DROPLET_1_IP }}
-      DROPLET_2_IP: ${{ secrets.DROPLET_2_IP }}
-      SSH_USERNAME: root
-      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-      REPO_URL: https://github.com/elijahanderson96/EDGAR_backend.git
-
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v2
+    - name: Checkout Repository
+      uses: actions/checkout@v3
 
-    - name: Verify sshpass is installed
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y sshpass
-        sshpass -V
+    - name: Log in to DigitalOcean Container Registry
+      run: echo "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" | docker login -u doctl --password-stdin registry.digitalocean.com
 
-    - name: Create and verify destination directory on Droplet 1
-      run: |
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_1_IP '
-          mkdir -p /root/EDGAR_Backend
-          ls -la /root/EDGAR_Backend
-        '
+    - name: Build Docker Image
+      run: docker build -t registry.digitalocean.com/<your-registry>/<image-name>:latest .
 
-    - name: Pull latest code and build on Droplet 1
-      run: |
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_1_IP '
-          if [ -d "/root/EDGAR_Backend/.git" ]; then
-            cd /root/EDGAR_Backend && git pull
-          else
-            git clone $REPO_URL /root/EDGAR_Backend
-          fi
-          cd /root/EDGAR_Backend && docker-compose build
-        '
+    - name: Push Docker Image
+      run: docker push registry.digitalocean.com/<your-registry>/<image-name>:latest
 
-    - name: Create and verify destination directory on Droplet 2
-      run: |
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_2_IP '
-          mkdir -p /root/EDGAR_Backend
-          ls -la /root/EDGAR_Backend
-        '
-
-    - name: Pull latest code and build on Droplet 2
-      run: |
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_2_IP '
-          if [ -d "/root/EDGAR_Backend/.git" ]; then
-            cd /root/EDGAR_Backend && git pull
-          else
-            git clone $REPO_URL /root/EDGAR_Backend
-          fi
-          cd /root/EDGAR_Backend && docker-compose build
-        '
+    - name: Deploy to Kubernetes
+      env:
+        KUBECONFIG: ${{ secrets.KUBECONFIG }}
+      run: kubectl apply -f deployment.yaml

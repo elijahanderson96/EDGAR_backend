@@ -38,7 +38,7 @@ async def get_account_info(request: Request):
         usage_dict = {}
     else:
         usage_dict = usage_result.set_index('endpoint_name')['route_count'].to_dict()
-
+    print('HELLO WORLD')
     # Prepare response
     user_info = user_result.iloc[0].to_dict()
     user_info['usage'] = usage_dict  # Add usage details under 'usage'
