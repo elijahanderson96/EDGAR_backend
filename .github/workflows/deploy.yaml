@@ -15,39 +15,28 @@ jobs:
         uses: actions/checkout@v3
 
       # Step 2: Set up doctl using the DigitalOcean GitHub Action
-      - name: Set up doctl
+      - name: Install doctl
         uses: digitalocean/action-doctl@v2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
-      # Step 3: Log in to DigitalOcean Container Registry
-      - name: Log in to DigitalOcean Container Registry
+      - name: Build container image
+        run: docker build -t ${{ secrets.REGISTRY_NAME }}/backend_service:$(echo $GITHUB_SHA | head -c7) .
+
+      - name: Log in to DigitalOcean Container Registry with short-lived credentials
         run: doctl registry login --expiry-seconds 1200
 
-      # Step 4: Build Docker Image
-      - name: Build Docker Image
-        run: |
-          TAG=$(echo $GITHUB_SHA | head -c7)
-          docker build -t registry.digitalocean.com/${{ secrets.REGISTRY_NAME }}/backend_service:${TAG} .
+      - name: Push image to DigitalOcean Container Registry
+        run: docker push ${{ secrets.REGISTRY_NAME }}/backend_service:$(echo $GITHUB_SHA | head -c7)
 
-      # Step 5: Push Docker Image
-      - name: Push Docker Image
-        run: |
-          TAG=$(echo $GITHUB_SHA | head -c7)
-          docker push registry.digitalocean.com/${{ secrets.REGISTRY_NAME }}/backend_service:${TAG}
-
-      # Step 6: Update deployment file with the correct image tag
       - name: Update deployment file
-        run: |
-          TAG=$(echo $GITHUB_SHA | head -c7)
-          sed -i 's|<IMAGE>|registry.digitalocean.com/${{ secrets.REGISTRY_NAME }}/backend_service:'${TAG}'|' $GITHUB_WORKSPACE/config/deployment.yml
+        run: TAG=$(echo $GITHUB_SHA | head -c7) && sed -i 's|<IMAGE>|${{ secrets.REGISTRY_NAME }}/backend_service:'${TAG}'|' $GITHUB_WORKSPACE/config/deployment.yml
 
-      # Step 7: Save DigitalOcean kubeconfig with short-lived credentials
-      - name: Save DigitalOcean kubeconfig
-        run: doctl kubernetes cluster kubeconfig save --expiry-seconds 1200 ${{ secrets.CLUSTER_NAME }}
+      - name: Save DigitalOcean kubeconfig with short-lived credentials
+        run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 ${{ secrets.CLUSTER_NAME }}
 
-      # Step 8: Deploy to DigitalOcean Kubernetes
       - name: Deploy to DigitalOcean Kubernetes
-        run: |
-          kubectl apply -f $GITHUB_WORKSPACE/config/deployment.yml
-          kubectl rollout status deployment/backend-service
+        run: kubectl apply -f $GITHUB_WORKSPACE/config/deployment.yml
+
+      - name: Verify deployment
+        run: kubectl rollout status deployment/python-example
