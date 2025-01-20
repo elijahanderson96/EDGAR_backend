@@ -23,7 +23,7 @@ jobs:
       - name: Download .env file to config directory
         run: |
           mkdir -p $GITHUB_WORKSPACE/config
-          curl -H "Authorization: AWS ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}:${{ secrets.DIGITALOCEAN_SPACES_TOKEN }}" \
+          curl -H "Authorization: AWS ${{ secrets.DIGITALOCEAN_SPACES_ID }}:${{ secrets.DIGITALOCEAN_SPACES_TOKEN }}" \
                -o $GITHUB_WORKSPACE/config/.env \
                https://bagels.nyc3.digitaloceanspaces.com/dev/creds/.env
 
