@@ -23,8 +23,9 @@ jobs:
       - name: Download .env file to config directory
         run: |
           mkdir -p $GITHUB_WORKSPACE/config
-          curl -o $GITHUB_WORKSPACE/config/.env https://bagels.nyc3.digitaloceanspaces.com/dev/creds/.env
-          echo ".env file downloaded successfully to the config directory."
+          curl -H "Authorization: AWS ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}:${{ secrets.DIGITALOCEAN_SPACES_TOKEN }}" \
+               -o $GITHUB_WORKSPACE/config/.env \
+               https://bagels.nyc3.digitaloceanspaces.com/dev/creds/.env
 
       - name: Build container image
         run: docker build -t ${{ secrets.REGISTRY_NAME }}/backend_service:$(echo $GITHUB_SHA | head -c7) .
