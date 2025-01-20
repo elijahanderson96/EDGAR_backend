@@ -20,12 +20,26 @@ jobs:
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
+      - name: Install s3cmd
+        run: |
+          sudo apt update
+          sudo apt install -y s3cmd
+
+      - name: Configure s3cmd
+        run: |
+          echo "[default]
+          access_key=${{ secrets.DIGITALOCEAN_SPACES_ID }}
+          secret_key=${{ secrets.DIGITALOCEAN_SPACES_TOKEN }}
+          host_base=nyc3.digitaloceanspaces.com
+          host_bucket=%(bucket)s.nyc3.digitaloceanspaces.com
+          use_https=True
+          " > ~/.s3cfg
+
       - name: Download .env file to config directory
         run: |
           mkdir -p $GITHUB_WORKSPACE/config
-          curl -H "Authorization: AWS ${{ secrets.DIGITALOCEAN_SPACES_ID }}:${{ secrets.DIGITALOCEAN_SPACES_TOKEN }}" \
-               -o $GITHUB_WORKSPACE/config/.env \
-               https://bagels.nyc3.digitaloceanspaces.com/dev/creds/.env
+          s3cmd get s3://bagels/dev/creds/.env $GITHUB_WORKSPACE/config/.env
+      
 
       - name: Build container image
         run: docker build -t ${{ secrets.REGISTRY_NAME }}/backend_service:$(echo $GITHUB_SHA | head -c7) .
