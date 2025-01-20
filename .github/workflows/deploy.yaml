@@ -20,24 +20,11 @@ jobs:
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
-      # Step 3: Create .env file in existing config directory
-      - name: Create .env file
+      - name: Download .env file to config directory
         run: |
-          cat <<EOF > $GITHUB_WORKSPACE/config/.env
-          # Database Configuration
-          POSTGRES_HOST_ADDRESS=${{ secrets.POSTGRES_HOST_ADDRESS }}
-          POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}
-          POSTGRES_USERNAME=${{ secrets.POSTGRES_USERNAME }}
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_NAME=${{ secrets.POSTGRES_NAME }}
-          
-          # SMTP Configuration
-          SMTP_SERVER=${{ secrets.SMTP_SERVER }}
-          SMTP_PORT=${{ secrets.SMTP_PORT }}
-          SMTP_USERNAME=${{ secrets.SMTP_USERNAME }}
-          SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
-          SENDER_EMAIL=${{ secrets.SENDER_EMAIL }}
-          EOF
+          mkdir -p $GITHUB_WORKSPACE/config
+          curl -o $GITHUB_WORKSPACE/config/.env https://bagels.nyc3.digitaloceanspaces.com/dev/creds/.env
+          echo ".env file downloaded successfully to the config directory."
 
       - name: Build container image
         run: docker build -t ${{ secrets.REGISTRY_NAME }}/backend_service:$(echo $GITHUB_SHA | head -c7) .
