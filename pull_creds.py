@@ -7,7 +7,7 @@ def download_file_from_spaces(bucket_name, object_key, destination_path):
     try:
         # Fetch credentials from environment variables
         secret_key = os.getenv('DIGITALOCEAN_SPACES_TOKEN')
-        access_key = os.getenv('DIGITAL_OCEAN_SPACES_ID')
+        access_key = os.getenv('DIGITALOCEAN_SPACES_ID')
 
         if not access_key or not secret_key:
             raise EnvironmentError("SPACES_ACCESS_KEY or SPACES_SECRET_KEY environment variables are not set.")
