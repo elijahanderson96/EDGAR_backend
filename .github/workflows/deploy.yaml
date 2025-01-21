@@ -32,7 +32,7 @@ jobs:
 
       - name: Run script to pull credentials
         env:
-          DIGITALOCEAN_SPACES_ID: ${{ secrets.DIGITALOCEAN_SPACES_ID }}
+          DIGITALOCEAN_SPACES_ID: ${{ secrets.DIGITAL_OCEAN_SPACES_ID }}
           DIGITALOCEAN_SPACES_TOKEN: ${{ secrets.DIGITALOCEAN_SPACES_TOKEN }}
         run: |
           python pull_creds.py
