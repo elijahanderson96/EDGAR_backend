@@ -20,26 +20,22 @@ jobs:
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
-      - name: Install s3cmd
-        run: |
-          sudo apt update
-          sudo apt install -y s3cmd
+      - name: Set up Python environment
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.9"
 
-      - name: Configure s3cmd
+      - name: Install dependencies
         run: |
-          echo "[default]
-          access_key=${{ secrets.DIGITALOCEAN_SPACES_ID }}
-          secret_key=${{ secrets.DIGITALOCEAN_SPACES_TOKEN }}
-          host_base=nyc3.digitaloceanspaces.com
-          host_bucket=%(bucket)s.nyc3.digitaloceanspaces.com
-          use_https=True
-          " > ~/.s3cfg
+          python -m pip install --upgrade pip
+          pip install boto3
 
-      - name: Download .env file to config directory
+      - name: Run script to pull credentials
+        env:
+          DIGITALOCEAN_SPACES_ID: ${{ secrets.DIGITALOCEAN_SPACES_ID }}
+          DIGITALOCEAN_SPACES_TOKEN: ${{ secrets.DIGITALOCEAN_SPACES_TOKEN }}
         run: |
-          mkdir -p $GITHUB_WORKSPACE/config
-          s3cmd get s3://bagels/dev/creds/.env $GITHUB_WORKSPACE/config/.env
-      
+          python pull_creds.py
 
       - name: Build container image
         run: docker build -t ${{ secrets.REGISTRY_NAME }}/backend_service:$(echo $GITHUB_SHA | head -c7) .
