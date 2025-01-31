@@ -60,7 +60,7 @@ class SubmissionsMetadata:
         filings = data.get("filings", {}).get("recent", {})
 
         if not filings:
-            logging.warning("No filings found in the response.")
+            # logging.warning("No filings found in the response.")
             return
 
         xbrl_indices = [i for i, v in enumerate(filings['isXBRL']) if v]
@@ -111,7 +111,7 @@ class DataRefresher:
             response.raise_for_status()  # Raise HTTPError for bad responses
             self.data = response.json()
         except requests.RequestException as e:
-            logging.error(f"Error fetching data: {e}")
+            # logging.error(f"Error fetching data: {e}")
             self.data = None
 
     def get_facts_by_accns(self, accns: set):
@@ -127,7 +127,7 @@ class DataRefresher:
         self.fetch_facts()
 
         if not self.data:
-            logging.error("Failed to load data. Cannot process facts.")
+            # logging.error("Failed to load data. Cannot process facts.")
             return {}
 
         filtered_facts = {}
@@ -249,7 +249,7 @@ class DataRefresher:
 
         async with db_connector.pool.acquire() as connection:
             try:
-                logging.info("Starting data insertion using copy_to_table...")
+                # logging.info("Starting data insertion using copy_to_table...")
                 await connection.copy_to_table(
                     'company_facts',
                     schema_name='financials',
@@ -281,7 +281,7 @@ async def process_cik(cik, symbol):
         metadata = SubmissionsMetadata(cik)
         xbrl_filings = set(metadata.get_filings())
         if not xbrl_filings:
-            logging.warning(f"No XBRL filings found for CIK {cik}, Symbol: {symbol}")
+            # logging.warning(f"No XBRL filings found for CIK {cik}, Symbol: {symbol}")
             return cik, 0, 0, None
 
         # Cross-reference ACCNs with database
@@ -291,7 +291,7 @@ async def process_cik(cik, symbol):
         missing_accns = xbrl_filings - db_data
 
         if not missing_accns:
-            logging.info(f"No missing ACCNs for CIK {cik}, Symbol: {symbol}")
+            # logging.info(f"No missing ACCNs for CIK {cik}, Symbol: {symbol}")
             return cik, len(xbrl_filings), len(db_data), None
 
         # Fetch and format data
@@ -301,13 +301,14 @@ async def process_cik(cik, symbol):
         if data:
             formatted_data = data_getter.format_facts_to_dataframe(data)
             await data_getter.insert_dataframe_to_db(formatted_data)
-        else:
-            logging.info(f"No new data found for CIK {cik}, Symbol: {symbol}")
+        # else:
+
+            # logging.info(f"No new data found for CIK {cik}, Symbol: {symbol}")
 
         return cik, len(xbrl_filings), len(db_data), data
 
     except Exception as e:
-        logging.error(f"Error processing CIK {cik}, Symbol: {symbol}: {e}")
+        # logging.error(f"Error processing CIK {cik}, Symbol: {symbol}: {e}")
         return cik, 0, 0, None
 
 
