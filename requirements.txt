@@ -7,3 +7,5 @@ asyncpg
 bcrypt
 psycopg2-binary
 sqlalchemy
+requests
+tqdm
