@@ -58,19 +58,11 @@ class FactFrequencyAnalyzer:
         """
         return await self.db_connector.run_query(query, params=[fact_name], return_df=True)
 
-    async def calculate_market_cap(self, symbol: str) -> pd.DataFrame:
+    async def calculate_market_cap(self) -> pd.DataFrame:
         """
-        Calculate the market capitalization for a given symbol based on the number of outstanding shares
-        and the closing price from the historical data.
-
-        Parameters:
-        - symbol (str): The stock symbol to calculate the market cap for.
-
-        Returns:
-        - pd.DataFrame: DataFrame with the market cap for each date.
         """
         query = """
-        CREATE MATERIALIZED VIEW financials.market_caps AS
+        CREATE OR REPLACE MATERIALIZED VIEW financials.market_caps AS
         WITH max_date_cf AS (
             SELECT
                 cf.symbol_id,
@@ -99,7 +91,7 @@ class FactFrequencyAnalyzer:
         JOIN metadata.symbols s ON mcf.symbol_id = s.symbol_id
         ORDER BY s.symbol, d.date;
         """
-        return await self.db_connector.run_query(query, params=[symbol], return_df=True)
+        return await self.db_connector.run_query(query, return_df=False)
 
     async def most_common_facts(self, top_n: int = 50) -> pd.DataFrame:
         """

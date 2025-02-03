@@ -108,6 +108,9 @@ db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA metadata TO doadmin
 db.run_query('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA financials TO doadmin;', return_df=False)
 
 db.run_query('GRANT USAGE, CREATE ON SCHEMA users, metadata, financials TO read_only;', return_df=False)
+db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA dagster TO read_only;', return_df=False)
+db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA dagster TO doadmin;', return_df=False)
+
 db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA users TO read_only;', return_df=False)
 db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA metadata TO read_only;', return_df=False)
 db.run_query('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA financials TO read_only;', return_df=False)
