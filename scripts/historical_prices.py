@@ -1,25 +1,57 @@
-import io
+import logging
+import time
 from asyncio import sleep
 import argparse
-import pandas as pd
 import yfinance as yf
 import asyncio
 from edgar.symbols import symbols
 from database.async_database import db_connector
 from utils.type_matcher import cast_dataframe_to_table_schema
 
+import pandas as pd
+import io
+
+# ✅ Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+
+# ✅ Global Counter for Total Rows Inserted
+total_rows_inserted = 0
+
 
 async def insert_dataframe_to_db(df: pd.DataFrame):
-    df = await db_connector.drop_existing_rows(df, 'financials.historical_data', df.columns.values.tolist())
+    """
+    Insert only new rows from df into financials.historical_data, avoiding duplicates.
+    """
+    global total_rows_inserted  # Track total rows inserted
 
-    # ✅ Drop unnecessary ID column
+    existing_data = await db_connector.run_query(
+        'SELECT symbol_id, date_id FROM financials.historical_data WHERE symbol_id = ANY($1)',
+        params=[df['symbol_id'].tolist()]  # ✅ asyncpg-compatible list format
+    )
+
+    logging.info(f"Existing Data: {len(existing_data)} rows fetched.")
+    logging.info(f"New Data: {df.shape[0]} rows before filtering.")
+
+    if not existing_data.empty:
+        existing_df = pd.DataFrame(existing_data, columns=['symbol_id', 'date_id'])
+
+        df = df.merge(existing_df, how="left", indicator=True).query("_merge == 'left_only'").drop(columns=["_merge"])
+
+    logging.info(f"Filtered Data: {df.shape[0]} rows remain for insertion.")
+
     if 'id' in df.columns:
         df.drop(labels=['id'], inplace=True, axis='columns')
 
     df = await cast_dataframe_to_table_schema(df, 'financials', 'historical_data')
-    output = io.BytesIO()
 
-    # ✅ Use 'NULL' instead of '\N'
+    if df.empty:
+        logging.info("✅ No new data to insert.")
+        return
+
+    output = io.BytesIO()
     df.to_csv(output, sep='\t', index=False, header=False, na_rep='NULL')
     output.seek(0)
 
@@ -33,9 +65,10 @@ async def insert_dataframe_to_db(df: pd.DataFrame):
                 delimiter='\t',
                 columns=df.columns.tolist()
             )
+            total_rows_inserted += df.shape[0]
+            logging.info(f"✅ Inserted {df.shape[0]} new records into the database.")
         except Exception as e:
-            print(f"🚨 Error inserting into database: {e}")
-            raise
+            logging.error(f"🚨 Error inserting into database")
 
 
 def get_historical_prices(symbols, start_date, end_date):
@@ -53,12 +86,12 @@ def get_historical_prices(symbols, start_date, end_date):
             symbol_data.dropna(subset=['open', 'high', 'low', 'close'], how='all', inplace=True)
             symbol_data['symbol'] = symbol
             all_data.append(symbol_data)
-            print(f"✅ Fetched data for {symbol} from {start_date} to {end_date}")
+            logging.info(f"✅ Fetched data for {symbol} from {start_date} to {end_date}")
 
         return pd.concat(all_data) if all_data else pd.DataFrame()
 
     except Exception as e:
-        print(f"🚨 Error fetching data for symbols: {e}")
+        logging.info(f"🚨 Error fetching data for symbols: {e}")
         return pd.DataFrame()
 
 
@@ -76,7 +109,7 @@ async def fetch_metadata():
         return symbols_df, dates_df
 
     except Exception as e:
-        print(f"🚨 Error fetching metadata: {e}")
+        logging.info(f"🚨 Error fetching metadata: {e}")
         return None, None
 
 
@@ -87,7 +120,7 @@ async def insert_data_to_db(df):
     """
     symbols_df, dates_df = await fetch_metadata()
     if symbols_df is None or dates_df is None:
-        print("🚨 Skipping data insertion due to missing metadata.")
+        logging.info("🚨 Skipping data insertion due to missing metadata.")
         return
 
     df = df.copy()  # Ensure it's a copy to avoid SettingWithCopyWarning
@@ -100,18 +133,15 @@ async def insert_data_to_db(df):
     merged_df = df.merge(symbols_df, on='symbol', how='inner')
     merged_df = merged_df.merge(dates_df, on='date', how='inner')
 
-    # Select relevant columns for insertion
     insert_df = merged_df[['symbol_id', 'date_id', 'open', 'high', 'low', 'close', 'volume']].copy()
 
-    # Ensure volume is properly formatted
     if 'volume' in insert_df.columns:
         insert_df.loc[:, 'volume'] = insert_df['volume'].fillna(0).astype(float).astype(int)
 
     try:
         await insert_dataframe_to_db(insert_df)
-        print(f"✅ Inserted {insert_df.shape[0]} records into the database.")
     except Exception as e:
-        print(f"🚨 Error inserting data into database: {e}")
+        logging.info(f"🚨 Error inserting data into database: {e}")
 
 
 async def process_symbols(symbols, start_date, end_date):
@@ -126,10 +156,16 @@ async def process_symbols(symbols, start_date, end_date):
                 chunk_df = df.iloc[start:start + chunk_size]
                 await insert_data_to_db(chunk_df)
     except Exception as e:
-        print(f"🚨 Error processing symbols: {e}")
+        logging.info(f"🚨 Error processing symbols: {e}")
 
 
 async def main(start_date, end_date):
+    """
+    Main function to process all stock symbols in batches and insert historical data.
+    """
+    global total_rows_inserted
+    start_time = time.time()  # Track execution start time
+
     await db_connector.initialize()
 
     symbols_list = symbols['symbol'].to_list()
@@ -142,11 +178,10 @@ async def main(start_date, end_date):
 
     await db_connector.close()
 
+    total_time = time.time() - start_time
+    logging.info(f"🚀 Total Rows Inserted: {total_rows_inserted}")
+    logging.info(f"⏳ Total Execution Time: {total_time:.2f} seconds")
 
-# Assuming your existing `main()` function is defined somewhere
-# async def main(start_date, end_date):
-#     # Your existing logic
-#     pass
 
 def parse_arguments():
     """
@@ -164,7 +199,7 @@ def parse_arguments():
     parser.add_argument(
         "--end-date",
         type=str,
-        required=True,
+        required=False,
         help="End date in YYYY-MM-DD format (e.g., 2025-01-01)"
     )
 

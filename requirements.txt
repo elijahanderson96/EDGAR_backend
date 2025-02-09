@@ -10,3 +10,4 @@ sqlalchemy
 requests
 tqdm
 yfinance
+boto3
