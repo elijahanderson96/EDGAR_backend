@@ -47,6 +47,13 @@ class ViewManager:
             db_connector.run_query(refresh_query, return_df=False)
             print("✅ Materialized view refreshed successfully.")
 
+            # ✅ Create an index on `symbol` after refresh
+            create_index_query = """
+            CREATE INDEX IF NOT EXISTS idx_market_caps_symbol ON financials.market_caps (symbol);
+            """
+            db_connector.run_query(create_index_query, return_df=False)
+            print("✅ Index on `symbol` created successfully.")
+
 
 if __name__ == "__main__":
     view_manager = ViewManager()

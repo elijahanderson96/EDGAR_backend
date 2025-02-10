@@ -79,6 +79,60 @@ async def get_financial_data(
 
     # Update API usage count
     if is_api_key:
-        await update_api_usage(user_id, symbol, len(result))
+        await update_api_usage(user_id, f'{symbol}_company_facts', len(result))
+
+    return result
+
+
+@financials_router.get("/financials/market_caps", tags=["Financials_API"])
+async def get_market_cap_data(
+        request: Request,
+        symbol: Optional[str] = Query(None, description="Stock symbol"),
+        start_date: Optional[str] = Query(None, description="Start date in YYYY-MM-DD format"),
+        end_date: Optional[str] = Query(None, description="End date in YYYY-MM-DD format"),
+        latest_n_records: Optional[int] = Query(1000, description="Limit number of records")
+):
+    """
+    Fetch market capitalization data from the materialized view `market_caps`.
+    """
+    user_id, is_api_key = await get_user_id_and_request_type(request)
+    # Base Query
+    query = """
+    SELECT date, symbol, market_cap, shares, price
+    FROM financials.market_caps
+    WHERE 1=1
+    """
+    params = []
+
+    if symbol:
+        query += " AND symbol = $1"
+        params.append(symbol)
+
+    if start_date:
+        query += " AND date >= $2"
+        params.append(start_date)
+
+    if end_date:
+        query += " AND date <= $3"
+        params.append(end_date)
+
+        # Add ordering and limit for the query
+    query += " ORDER BY date DESC"
+
+    if latest_n_records:
+        query += f" LIMIT {latest_n_records}"
+    else:
+        query += " LIMIT 1000"
+    print(query, params)
+    market_caps = await db_connector.run_query(query, params=params)
+
+    if market_caps.empty:
+        raise HTTPException(status_code=404, detail="No market cap data found.")
+
+    result = market_caps.to_dict(orient="records")
+
+    # Update API usage count
+    if is_api_key:
+       await update_api_usage(user_id, f'{symbol}_market_cap', len(result))
 
     return result

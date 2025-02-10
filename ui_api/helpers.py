@@ -48,3 +48,5 @@ async def update_api_usage(user_id: int, endpoint: str, count: int = 1):
         print(f"Updated API usage: user_id={user_id}, endpoint={endpoint}, count={count}, from deployment test")
     except Exception as e:
         print(f"Error updating API usage: {e}")
+
+

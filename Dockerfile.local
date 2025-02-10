@@ -6,9 +6,9 @@ COPY config /app/config
 COPY edgar /app/edgar
 COPY database /app/database
 COPY helpers /app/helpers
-COPY models /app/models
 COPY ui_api /app/ui_api
 COPY *.py /app/
+
 COPY requirements.txt /app/requirements.txt
 
 RUN pip install --upgrade pip
