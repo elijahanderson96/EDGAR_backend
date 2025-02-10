@@ -13,6 +13,7 @@ COPY *.py /app/
 COPY requirements.txt /app/requirements.txt
 
 RUN pip install --no-cache-dir -r /app/requirements.txt
+ENV PYTHONPATH="/app"
 
 # 2n + 1 for cpu count
 CMD ["uvicorn", "ui_api.main:app", "--host", "0.0.0.0", "--port", "80", "--workers", "2"]
