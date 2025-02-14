@@ -1,4 +1,5 @@
 import os
+import time
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
@@ -37,18 +38,38 @@ class SubmissionsMetadata:
     def get_filings(self):
         """
         Fetch data from the SEC endpoint and store it in class attributes.
+        Implements backoff using the Retry-After header if present.
         """
         url = self.BASE_URL.format(cik=self.cik)
+        max_retries = 5
 
-        try:
-            response = requests.get(url, headers={"User-Agent": "Elijah Anderson (elijahanderson96@gmail.com)"})
-            response.raise_for_status()  # Raise HTTPError for bad responses
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, headers={"User-Agent": "Elijah Anderson (elijahanderson96@gmail.com)"})
 
-            data = response.json()
-            return self._process_data(data)
+                if response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    print(retry_after)
+                    if retry_after:
+                        wait_time = int(retry_after)
+                    else:
+                        wait_time = 2 ** attempt  # Default exponential backoff if header not provided
 
-        except requests.RequestException as e:
-            logging.error(f"Error fetching data: {e}")
+                    logging.warning(f"Rate limit reached. Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue  # Retry after waiting
+
+                response.raise_for_status()
+                data = response.json()
+                return self._process_data(data)
+
+            except requests.RequestException as e:
+                logging.error(f"Error fetching data (attempt {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    raise
+
+        logging.error("Max retries reached. Failed to fetch data.")
+        return None
 
     def _process_data(self, data):
         """
@@ -104,15 +125,38 @@ class DataRefresher:
     def fetch_facts(self):
         """
         Fetch data from the SEC endpoint and store it in the class attribute.
+        Implements backoff using the Retry-After header if present.
         """
         url = self.BASE_URL.format(cik=self.cik)
-        try:
-            response = requests.get(url, headers={"User-Agent": "Elijah Anderson (elijahanderson96@gmail.com)"})
-            response.raise_for_status()  # Raise HTTPError for bad responses
-            self.data = response.json()
-        except requests.RequestException as e:
-            # logging.error(f"Error fetching data: {e}")
-            self.data = None
+        max_retries = 5
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, headers={"User-Agent": "Elijah Anderson (elijahanderson96@gmail.com)"})
+
+                if response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    if retry_after:
+                        wait_time = int(retry_after)
+                    else:
+                        wait_time = 2 ** attempt  # Default exponential backoff if header not provided
+
+                    logging.warning(f"Rate limit reached. Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue  # Retry after waiting
+
+                response.raise_for_status()
+                self.data = response.json()
+                return  # Successfully fetched data
+
+            except requests.RequestException as e:
+                logging.error(f"Error fetching data (attempt {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    self.data = None
+                    raise
+
+        logging.error("Max retries reached. Failed to fetch data.")
+        self.data = None
 
     def get_facts_by_accns(self, accns: set):
         """
@@ -303,7 +347,7 @@ async def process_cik(cik, symbol):
             await data_getter.insert_dataframe_to_db(formatted_data)
         # else:
 
-            # logging.info(f"No new data found for CIK {cik}, Symbol: {symbol}")
+        # logging.info(f"No new data found for CIK {cik}, Symbol: {symbol}")
 
         return cik, len(xbrl_filings), len(db_data), data
 
