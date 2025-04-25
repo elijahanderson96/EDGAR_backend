@@ -252,11 +252,11 @@ async def get_symbol_metadata(
     query_params = [symbol_id]
 
     try:
-        # Fetch multiple rows (one per fact_name)
-        # Use return_df=False to get list of records directly
-        results = await db_connector.run_query(query, params=query_params, return_df=False, fetch_one=False)
+        # Fetch multiple rows (one per fact_name) as a DataFrame
+        results_df = await db_connector.run_query(query, params=query_params, return_df=True, fetch_one=False)
 
-        if not results:
+        # Check if the DataFrame is None or empty
+        if results_df is None or results_df.empty:
             # Handle case where symbol exists but has no facts in the table
             logger.warning(f"No facts found in company_facts for symbol_id {symbol_id} ({symbol_upper}).")
             # Return empty list for available_facts
@@ -266,19 +266,21 @@ async def get_symbol_metadata(
         overall_min_dt: Optional[date] = None
         overall_max_dt: Optional[date] = None
 
-        for record in results:
-            fact_name = record['fact_name']
-            fact_count = record['fact_count']
-            min_date_id = record['min_date_id']
-            max_date_id = record['max_date_id']
+        # Iterate over the DataFrame rows
+        for index, row in results_df.iterrows():
+            fact_name = row['fact_name']
+            fact_count = row['fact_count']
+            min_date_id = row['min_date_id']
+            max_date_id = row['max_date_id']
 
             # Convert date IDs to dates using cache
-            min_dt = get_date_from_id(min_date_id) if min_date_id is not None else None
-            max_dt = get_date_from_id(max_date_id) if max_date_id is not None else None
+            # Handle potential pd.NA from database/dataframe
+            min_dt = get_date_from_id(min_date_id) if pd.notna(min_date_id) else None
+            max_dt = get_date_from_id(max_date_id) if pd.notna(max_date_id) else None
 
             detailed_facts.append(FactMetadata(
                 fact_name=fact_name,
-                count=fact_count,
+                count=int(fact_count), # Ensure count is int
                 min_date=min_dt,
                 max_date=max_dt
             ))
