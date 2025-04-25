@@ -1,4 +1,3 @@
-import logging
 import uuid
 import time
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
@@ -16,8 +15,8 @@ from helpers.email_utils import send_authentication_email, is_valid_email
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1
-REFRESH_TOKEN_EXPIRE_DAYS = 1  # 1 minute (1 day / 1440 minutes per day)
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
+REFRESH_TOKEN_EXPIRE_DAYS = 600  # 1 minute (1 day / 1440 minutes per day)
 
 auth_router = APIRouter()
 
@@ -34,38 +33,25 @@ def add_delay(start_time: float, min_delay: float = 0.5):
 
 @auth_router.post("/login", response_model=Token)
 async def login(user_credentials: UserLogin, response: Response):
-    """The response argument in the FastAPI login method is automatically provided by FastAPI when the endpoint is called.
-    FastAPI injects this Response object, allowing you to modify the response, such as setting cookies or headers.
-    This happens behind the scenes and does not require an explicit pass from the React component."""
     username = user_credentials.username
     password = user_credentials.password
     start_time = time.monotonic()
 
-    # Authenticate user
     user = authenticate_user(username, password)
+
     if not user:
         # Introduce a deliberate delay
         add_delay(start_time)
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
-    # Update last_logged_in
     query = "UPDATE users.users SET last_logged_in = %s WHERE username = %s"
     db_connector.run_query(query, (datetime.now(), username), return_df=False)
 
-    # Generate JWT tokens. We generate refresh_tokens only when a user logs in.
     access_token = create_access_token(user["id"])
     refresh_token = create_refresh_token(user["id"])
-    # probably should set access token as a cookie.
-    # response.set_cookie(key="access_token", value=access_token, httponly=True, secure=True, samesite="strict")
-    # Set the refresh token as an HTTP-only cookie
+
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=True, samesite="strict")
-    # setting the refresh token as an HTTP-only cookie is a more secure approach since it prevents JavaScript
-    # from accessing the token, reducing the risk of XSS attacks.
-    # The React component needs to be updated to reflect this change and should not
-    # expect the refresh_token in the response body.
-
     add_delay(start_time)
-
     email = db_connector.run_query('SELECT email from users.users where id=%s', (user["id"],),fetch_one=True)
 
     return {"access_token": access_token, "token_type": "bearer", "email": email}
