@@ -1,15 +1,17 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import HTTPException, Depends # Add Depends
-from fastapi.security import APIKeyHeader # Import APIKeyHeader
+from typing import Optional
+
+from fastapi import HTTPException # Remove Depends
+# Remove APIKeyHeader import if not used elsewhere in this file
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from starlette import status
 
-# Import helpers and models needed for API key verification
-from app.helpers import users as user_helpers
-from app.models.user import User
+# Remove imports no longer needed here
+# from app.helpers import users as user_helpers
+# from app.models.user import User
 
 from config import configs
 
@@ -111,35 +113,4 @@ def verify_token(token: str, expected_type: str) -> Optional[dict]:
         print(f"Token verification failed: {e}")
         raise credentials_exception  # Re-raise as HTTPException
 
-
-# --- API Key Verification ---
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
-
-async def verify_api_key(api_key: str = Depends(api_key_header)) -> User:
-    """
-    Dependency to verify the API key provided in the 'X-API-Key' header.
-    Returns the authenticated user or raises HTTPException 401/403.
-    """
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API Key missing",
-        )
-
-    user = await user_helpers.get_user_by_api_key(api_key)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API Key",
-        )
-
-    # Optionally, check if the user associated with the API key is active/verified
-    if not user.is_authenticated:
-         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account associated with this API key is not verified.",
-        )
-
-    # Return the user object (Pydantic model)
-    # Use model_validate for Pydantic v2
-    return User.model_validate(user)
+# --- API Key Verification Logic Moved to app/routes/financials.py ---
