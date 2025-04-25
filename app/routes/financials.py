@@ -1,14 +1,13 @@
 import logging
 from datetime import date
-from typing import List, Optional
+from typing import Optional
 
-import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from starlette import status
 
-from app.cache import get_symbol_id, get_date_id, get_date_from_id, get_symbol_from_id
+from app.cache import get_symbol_id, get_date_id, get_date_from_id
 from app.helpers.security import verify_api_key
-# Import the new model and date type
+
 from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams
 from app.models.user import User
 from database.async_database import db_connector
@@ -17,14 +16,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/financials",
     tags=["Financial Data"],
-    dependencies=[Depends(verify_api_key)] # Apply API key verification to all routes in this router
+    dependencies=[Depends(verify_api_key)]  # Apply API key verification to all routes in this router
 )
+
 
 # --- Dependency for Common Financial Parameters ---
 async def get_common_financial_params(
-    symbol: str = Path(..., title="Stock Symbol", description="The ticker symbol (e.g., AAPL)", min_length=1, max_length=10),
-    start_date_str: Optional[str] = Query(None, alias="startDate", description="Start date filter (YYYY-MM-DD)", regex=r"^\d{4}-\d{2}-\d{2}$"),
-    end_date_str: Optional[str] = Query(None, alias="endDate", description="End date filter (YYYY-MM-DD)", regex=r"^\d{4}-\d{2}-\d{2}$"),
+        symbol: str = Path(..., title="Stock Symbol", description="The ticker symbol (e.g., AAPL)", min_length=1,
+                           max_length=10),
+        start_date_str: Optional[str] = Query(None, alias="startDate", description="Start date filter (YYYY-MM-DD)",
+                                              regex=r"^\d{4}-\d{2}-\d{2}$"),
+        end_date_str: Optional[str] = Query(None, alias="endDate", description="End date filter (YYYY-MM-DD)",
+                                            regex=r"^\d{4}-\d{2}-\d{2}$"),
 ) -> CommonFinancialsParams:
     """
     Dependency to handle common symbol and date parameters, including validation and cache lookups.
@@ -39,16 +42,18 @@ async def get_common_financial_params(
     if start_date_str:
         start_date_id = get_date_id(start_date_str)
         if start_date_id is None:
-             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Start date '{start_date_str}' not found or invalid format (YYYY-MM-DD).")
-        start_date_obj = get_date_from_id(start_date_id) # Get date object for the model
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Start date '{start_date_str}' not found or invalid format (YYYY-MM-DD).")
+        start_date_obj = get_date_from_id(start_date_id)  # Get date object for the model
 
     end_date_obj: Optional[date] = None
     end_date_id: Optional[int] = None
     if end_date_str:
         end_date_id = get_date_id(end_date_str)
         if end_date_id is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"End date '{end_date_str}' not found or invalid format (YYYY-MM-DD).")
-        end_date_obj = get_date_from_id(end_date_id) # Get date object for the model
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"End date '{end_date_str}' not found or invalid format (YYYY-MM-DD).")
+        end_date_obj = get_date_from_id(end_date_id)  # Get date object for the model
 
     # Optional: Add validation for start_date <= end_date if both are provided
     if start_date_obj and end_date_obj and start_date_obj > end_date_obj:
@@ -66,9 +71,10 @@ async def get_common_financial_params(
 
 @router.get("/facts/{symbol}/{fact_name}", response_model=FactQueryResponse)
 async def get_company_facts(
-    fact_name: str = Path(..., title="Fact Name", description="The specific financial fact name (e.g., Revenues)", min_length=1),
-    common_params: CommonFinancialsParams = Depends(get_common_financial_params), # Inject common params
-    current_user: User = Depends(verify_api_key) # Get user info if needed, already verified
+        fact_name: str = Path(..., title="Fact Name", description="The specific financial fact name (e.g., Revenues)",
+                              min_length=1),
+        common_params: CommonFinancialsParams = Depends(get_common_financial_params),  # Inject common params
+        current_user: User = Depends(verify_api_key)  # Get user info if needed, already verified
 ):
     """
     Retrieves historical values for a specific company fact (e.g., Revenues, Assets)
@@ -91,7 +97,7 @@ async def get_company_facts(
         FROM financials.company_facts
         WHERE symbol_id = $1 AND fact_name = $2
     """
-    param_index = 3 # Start parameter index after symbol_id and fact_name
+    param_index = 3  # Start parameter index after symbol_id and fact_name
 
     # Add date filters (filtering on end_date_id)
     if start_date_id is not None:
@@ -103,10 +109,11 @@ async def get_company_facts(
         query_params.append(end_date_id)
         param_index += 1
 
-    query += " ORDER BY end_date_id DESC;" # Order by date descending
+    query += " ORDER BY end_date_id DESC;"  # Order by date descending
 
     try:
-        results = await db_connector.run_query(query, params=query_params, return_df=False, fetch_one=False) # fetch_one=False returns list of records
+        results = await db_connector.run_query(query, params=query_params, return_df=False,
+                                               fetch_one=False)  # fetch_one=False returns list of records
 
         if not results:
             logger.warning(f"No facts found for symbol_id {symbol_id} and fact_name {fact_name} with given filters.")
@@ -115,18 +122,17 @@ async def get_company_facts(
             # Use symbol from common_params
             return FactQueryResponse(symbol=common_params.symbol, fact_name=fact_name, data=[])
 
-
         # Process results, converting date_ids back to dates using cache
         processed_data = []
-        for record_dict in (dict(record) for record in results): # Convert records to dicts
+        for record_dict in (dict(record) for record in results):  # Convert records to dicts
             start_dt = get_date_from_id(record_dict.get('start_date_id'))
             end_dt = get_date_from_id(record_dict.get('end_date_id'))
             filed_dt = get_date_from_id(record_dict.get('filed_date_id'))
 
             # Handle cases where date_id might not be in cache (should be rare if cache is complete)
             if start_dt is None or end_dt is None or filed_dt is None:
-                 logger.warning(f"Could not resolve date IDs for record: {record_dict}. Skipping.")
-                 continue
+                logger.warning(f"Could not resolve date IDs for record: {record_dict}. Skipping.")
+                continue
 
             # Create the Pydantic model instance for the response item
             fact_data = CompanyFactBase(
@@ -138,7 +144,7 @@ async def get_company_facts(
                 fiscal_year=record_dict['fiscal_year'],
                 fiscal_period=record_dict['fiscal_period'],
                 form=record_dict['form'],
-                value=record_dict['value'], # Ensure type matches model (float)
+                value=record_dict['value'],  # Ensure type matches model (float)
                 accn=record_dict['accn']
             )
             processed_data.append(fact_data)
@@ -148,7 +154,8 @@ async def get_company_facts(
 
     except Exception as e:
         logger.error(f"Error fetching facts for {symbol}/{fact_name}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error retrieving financial data.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Error retrieving financial data.")
 
 # Add more routes here later, e.g., for specific facts like /revenue, /assets, etc.
 # Or a more generic search endpoint.
