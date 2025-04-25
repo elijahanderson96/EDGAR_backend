@@ -290,13 +290,654 @@ class CreateViewManager:
             db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_fact_activity_status_status ON metadata.fact_activity_status (activity_status);", return_df=False)
             print("✅ Indices on metadata.fact_activity_status created successfully.")
 
+    # --- Additional Ratio Views based on Top 50 Facts ---
+
+    @Job(execution_order=5)
+    def create_return_on_assets_view(self, refresh=False):
+        """Creates or refreshes the return_on_assets materialized view."""
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.return_on_assets AS
+        WITH latest_facts AS (
+            SELECT
+                symbol_id,
+                end_date_id,
+                MAX(filed_date_id) as latest_filed_date_id
+            FROM financials.company_facts
+            WHERE fact_name IN ('NetIncomeLoss', 'Assets')
+              AND fiscal_period = 'Q4' -- Use annual data for consistency
+            GROUP BY symbol_id, end_date_id
+        ),
+        fact_values AS (
+            SELECT
+                lf.symbol_id,
+                lf.end_date_id,
+                MAX(CASE WHEN cf.fact_name = 'NetIncomeLoss' THEN cf.value ELSE NULL END) AS net_income,
+                MAX(CASE WHEN cf.fact_name = 'Assets' THEN cf.value ELSE NULL END) AS total_assets
+            FROM latest_facts lf
+            JOIN financials.company_facts cf
+              ON lf.symbol_id = cf.symbol_id
+             AND lf.end_date_id = cf.end_date_id
+             AND lf.latest_filed_date_id = cf.filed_date_id
+            WHERE cf.fact_name IN ('NetIncomeLoss', 'Assets')
+            GROUP BY lf.symbol_id, lf.end_date_id
+        )
+        SELECT
+            s.symbol,
+            d.date AS end_date,
+            fv.net_income,
+            fv.total_assets,
+            -- Use average assets for ROA calculation (current period + previous period) / 2
+            LAG(fv.total_assets) OVER (PARTITION BY s.symbol ORDER BY d.date) as prev_total_assets,
+            CASE
+                WHEN fv.total_assets IS NOT NULL AND LAG(fv.total_assets) OVER (PARTITION BY s.symbol ORDER BY d.date) IS NOT NULL
+                 AND (fv.total_assets + LAG(fv.total_assets) OVER (PARTITION BY s.symbol ORDER BY d.date)) / 2 <> 0
+                THEN fv.net_income / ((fv.total_assets + LAG(fv.total_assets) OVER (PARTITION BY s.symbol ORDER BY d.date)) / 2)
+                ELSE NULL -- Handle cases with insufficient history or zero average assets
+            END AS return_on_assets_ratio
+        FROM fact_values fv
+        JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
+        JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        ORDER BY s.symbol, d.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.return_on_assets created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.return_on_assets;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.return_on_assets refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_roa_symbol ON financials.return_on_assets (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_roa_end_date ON financials.return_on_assets (end_date);", return_df=False)
+            print("✅ Indices on financials.return_on_assets created successfully.")
+
+    @Job(execution_order=6)
+    def create_return_on_equity_view(self, refresh=False):
+        """Creates or refreshes the return_on_equity materialized view."""
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.return_on_equity AS
+        WITH latest_facts AS (
+            SELECT
+                symbol_id,
+                end_date_id,
+                MAX(filed_date_id) as latest_filed_date_id
+            FROM financials.company_facts
+            WHERE fact_name IN ('NetIncomeLoss', 'StockholdersEquity')
+              AND fiscal_period = 'Q4' -- Use annual data for consistency
+            GROUP BY symbol_id, end_date_id
+        ),
+        fact_values AS (
+            SELECT
+                lf.symbol_id,
+                lf.end_date_id,
+                MAX(CASE WHEN cf.fact_name = 'NetIncomeLoss' THEN cf.value ELSE NULL END) AS net_income,
+                MAX(CASE WHEN cf.fact_name = 'StockholdersEquity' THEN cf.value ELSE NULL END) AS total_equity
+            FROM latest_facts lf
+            JOIN financials.company_facts cf
+              ON lf.symbol_id = cf.symbol_id
+             AND lf.end_date_id = cf.end_date_id
+             AND lf.latest_filed_date_id = cf.filed_date_id
+            WHERE cf.fact_name IN ('NetIncomeLoss', 'StockholdersEquity')
+            GROUP BY lf.symbol_id, lf.end_date_id
+        )
+        SELECT
+            s.symbol,
+            d.date AS end_date,
+            fv.net_income,
+            fv.total_equity,
+            -- Use average equity for ROE calculation (current period + previous period) / 2
+            LAG(fv.total_equity) OVER (PARTITION BY s.symbol ORDER BY d.date) as prev_total_equity,
+            CASE
+                WHEN fv.total_equity IS NOT NULL AND LAG(fv.total_equity) OVER (PARTITION BY s.symbol ORDER BY d.date) IS NOT NULL
+                 AND (fv.total_equity + LAG(fv.total_equity) OVER (PARTITION BY s.symbol ORDER BY d.date)) / 2 <> 0
+                THEN fv.net_income / ((fv.total_equity + LAG(fv.total_equity) OVER (PARTITION BY s.symbol ORDER BY d.date)) / 2)
+                ELSE NULL -- Handle cases with insufficient history or zero average equity
+            END AS return_on_equity_ratio
+        FROM fact_values fv
+        JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
+        JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        ORDER BY s.symbol, d.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.return_on_equity created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.return_on_equity;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.return_on_equity refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_roe_symbol ON financials.return_on_equity (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_roe_end_date ON financials.return_on_equity (end_date);", return_df=False)
+            print("✅ Indices on financials.return_on_equity created successfully.")
+
+    @Job(execution_order=7)
+    def create_debt_to_assets_view(self, refresh=False):
+        """Creates or refreshes the debt_to_assets materialized view."""
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.debt_to_assets AS
+        WITH latest_facts AS (
+            SELECT
+                symbol_id,
+                end_date_id,
+                MAX(filed_date_id) as latest_filed_date_id
+            FROM financials.company_facts
+            WHERE fact_name IN ('Liabilities', 'Assets')
+            GROUP BY symbol_id, end_date_id
+        ),
+        fact_values AS (
+            SELECT
+                lf.symbol_id,
+                lf.end_date_id,
+                MAX(CASE WHEN cf.fact_name = 'Liabilities' THEN cf.value ELSE NULL END) AS total_liabilities,
+                MAX(CASE WHEN cf.fact_name = 'Assets' THEN cf.value ELSE NULL END) AS total_assets
+            FROM latest_facts lf
+            JOIN financials.company_facts cf
+              ON lf.symbol_id = cf.symbol_id
+             AND lf.end_date_id = cf.end_date_id
+             AND lf.latest_filed_date_id = cf.filed_date_id
+            WHERE cf.fact_name IN ('Liabilities', 'Assets')
+            GROUP BY lf.symbol_id, lf.end_date_id
+        )
+        SELECT
+            s.symbol,
+            d.date AS end_date,
+            fv.total_liabilities,
+            fv.total_assets,
+            CASE
+                WHEN fv.total_assets IS NOT NULL AND fv.total_assets <> 0 THEN fv.total_liabilities / fv.total_assets
+                ELSE NULL
+            END AS debt_to_assets_ratio
+        FROM fact_values fv
+        JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
+        JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        ORDER BY s.symbol, d.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.debt_to_assets created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.debt_to_assets;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.debt_to_assets refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_dta_symbol ON financials.debt_to_assets (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_dta_end_date ON financials.debt_to_assets (end_date);", return_df=False)
+            print("✅ Indices on financials.debt_to_assets created successfully.")
+
+    @Job(execution_order=8)
+    def create_equity_multiplier_view(self, refresh=False):
+        """Creates or refreshes the equity_multiplier materialized view."""
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.equity_multiplier AS
+        WITH latest_facts AS (
+            SELECT
+                symbol_id,
+                end_date_id,
+                MAX(filed_date_id) as latest_filed_date_id
+            FROM financials.company_facts
+            WHERE fact_name IN ('Assets', 'StockholdersEquity')
+            GROUP BY symbol_id, end_date_id
+        ),
+        fact_values AS (
+            SELECT
+                lf.symbol_id,
+                lf.end_date_id,
+                MAX(CASE WHEN cf.fact_name = 'Assets' THEN cf.value ELSE NULL END) AS total_assets,
+                MAX(CASE WHEN cf.fact_name = 'StockholdersEquity' THEN cf.value ELSE NULL END) AS total_equity
+            FROM latest_facts lf
+            JOIN financials.company_facts cf
+              ON lf.symbol_id = cf.symbol_id
+             AND lf.end_date_id = cf.end_date_id
+             AND lf.latest_filed_date_id = cf.filed_date_id
+            WHERE cf.fact_name IN ('Assets', 'StockholdersEquity')
+            GROUP BY lf.symbol_id, lf.end_date_id
+        )
+        SELECT
+            s.symbol,
+            d.date AS end_date,
+            fv.total_assets,
+            fv.total_equity,
+            CASE
+                WHEN fv.total_equity IS NOT NULL AND fv.total_equity <> 0 THEN fv.total_assets / fv.total_equity
+                ELSE NULL
+            END AS equity_multiplier_ratio
+        FROM fact_values fv
+        JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
+        JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        ORDER BY s.symbol, d.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.equity_multiplier created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.equity_multiplier;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.equity_multiplier refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_em_symbol ON financials.equity_multiplier (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_em_end_date ON financials.equity_multiplier (end_date);", return_df=False)
+            print("✅ Indices on financials.equity_multiplier created successfully.")
+
+    @Job(execution_order=9)
+    def create_cash_ratio_view(self, refresh=False):
+        """Creates or refreshes the cash_ratio materialized view."""
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.cash_ratio AS
+        WITH latest_facts AS (
+            SELECT
+                symbol_id,
+                end_date_id,
+                MAX(filed_date_id) as latest_filed_date_id
+            FROM financials.company_facts
+            WHERE fact_name IN ('CashAndCashEquivalentsAtCarryingValue', 'LiabilitiesCurrent')
+            GROUP BY symbol_id, end_date_id
+        ),
+        fact_values AS (
+            SELECT
+                lf.symbol_id,
+                lf.end_date_id,
+                MAX(CASE WHEN cf.fact_name = 'CashAndCashEquivalentsAtCarryingValue' THEN cf.value ELSE NULL END) AS cash_equivalents,
+                MAX(CASE WHEN cf.fact_name = 'LiabilitiesCurrent' THEN cf.value ELSE NULL END) AS current_liabilities
+            FROM latest_facts lf
+            JOIN financials.company_facts cf
+              ON lf.symbol_id = cf.symbol_id
+             AND lf.end_date_id = cf.end_date_id
+             AND lf.latest_filed_date_id = cf.filed_date_id
+            WHERE cf.fact_name IN ('CashAndCashEquivalentsAtCarryingValue', 'LiabilitiesCurrent')
+            GROUP BY lf.symbol_id, lf.end_date_id
+        )
+        SELECT
+            s.symbol,
+            d.date AS end_date,
+            fv.cash_equivalents,
+            fv.current_liabilities,
+            CASE
+                WHEN fv.current_liabilities IS NOT NULL AND fv.current_liabilities <> 0 THEN fv.cash_equivalents / fv.current_liabilities
+                ELSE NULL
+            END AS cash_ratio
+        FROM fact_values fv
+        JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
+        JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        ORDER BY s.symbol, d.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.cash_ratio created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.cash_ratio;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.cash_ratio refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_cashratio_symbol ON financials.cash_ratio (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_cashratio_end_date ON financials.cash_ratio (end_date);", return_df=False)
+            print("✅ Indices on financials.cash_ratio created successfully.")
+
+    @Job(execution_order=10)
+    def create_working_capital_view(self, refresh=False):
+        """Creates or refreshes the working_capital materialized view."""
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.working_capital AS
+        WITH latest_facts AS (
+            SELECT
+                symbol_id,
+                end_date_id,
+                MAX(filed_date_id) as latest_filed_date_id
+            FROM financials.company_facts
+            WHERE fact_name IN ('AssetsCurrent', 'LiabilitiesCurrent')
+            GROUP BY symbol_id, end_date_id
+        ),
+        fact_values AS (
+            SELECT
+                lf.symbol_id,
+                lf.end_date_id,
+                MAX(CASE WHEN cf.fact_name = 'AssetsCurrent' THEN cf.value ELSE NULL END) AS current_assets,
+                MAX(CASE WHEN cf.fact_name = 'LiabilitiesCurrent' THEN cf.value ELSE NULL END) AS current_liabilities
+            FROM latest_facts lf
+            JOIN financials.company_facts cf
+              ON lf.symbol_id = cf.symbol_id
+             AND lf.end_date_id = cf.end_date_id
+             AND lf.latest_filed_date_id = cf.filed_date_id
+            WHERE cf.fact_name IN ('AssetsCurrent', 'LiabilitiesCurrent')
+            GROUP BY lf.symbol_id, lf.end_date_id
+        )
+        SELECT
+            s.symbol,
+            d.date AS end_date,
+            fv.current_assets,
+            fv.current_liabilities,
+            (fv.current_assets - fv.current_liabilities) AS working_capital
+        FROM fact_values fv
+        JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
+        JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        ORDER BY s.symbol, d.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.working_capital created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.working_capital;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.working_capital refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_wc_symbol ON financials.working_capital (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_wc_end_date ON financials.working_capital (end_date);", return_df=False)
+            print("✅ Indices on financials.working_capital created successfully.")
+
+    @Job(execution_order=11)
+    def create_interest_coverage_ratio_view(self, refresh=False):
+        """Creates or refreshes the interest_coverage_ratio materialized view."""
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.interest_coverage_ratio AS
+        WITH latest_facts AS (
+            SELECT
+                symbol_id,
+                end_date_id,
+                MAX(filed_date_id) as latest_filed_date_id
+            FROM financials.company_facts
+            WHERE fact_name IN ('OperatingIncomeLoss', 'InterestExpense')
+              AND fiscal_period = 'Q4' -- Use annual data for consistency
+            GROUP BY symbol_id, end_date_id
+        ),
+        fact_values AS (
+            SELECT
+                lf.symbol_id,
+                lf.end_date_id,
+                MAX(CASE WHEN cf.fact_name = 'OperatingIncomeLoss' THEN cf.value ELSE NULL END) AS operating_income,
+                MAX(CASE WHEN cf.fact_name = 'InterestExpense' THEN cf.value ELSE NULL END) AS interest_expense
+            FROM latest_facts lf
+            JOIN financials.company_facts cf
+              ON lf.symbol_id = cf.symbol_id
+             AND lf.end_date_id = cf.end_date_id
+             AND lf.latest_filed_date_id = cf.filed_date_id
+            WHERE cf.fact_name IN ('OperatingIncomeLoss', 'InterestExpense')
+            GROUP BY lf.symbol_id, lf.end_date_id
+        )
+        SELECT
+            s.symbol,
+            d.date AS end_date,
+            fv.operating_income,
+            fv.interest_expense,
+            CASE
+                WHEN fv.interest_expense IS NOT NULL AND fv.interest_expense <> 0 THEN fv.operating_income / fv.interest_expense
+                ELSE NULL -- Handle zero or null interest expense
+            END AS interest_coverage_ratio
+        FROM fact_values fv
+        JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
+        JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        ORDER BY s.symbol, d.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.interest_coverage_ratio created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.interest_coverage_ratio;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.interest_coverage_ratio refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_icr_symbol ON financials.interest_coverage_ratio (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_icr_end_date ON financials.interest_coverage_ratio (end_date);", return_df=False)
+            print("✅ Indices on financials.interest_coverage_ratio created successfully.")
+
+    @Job(execution_order=12)
+    def create_operating_cash_flow_ratio_view(self, refresh=False):
+        """Creates or refreshes the operating_cash_flow_ratio materialized view."""
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.operating_cash_flow_ratio AS
+        WITH latest_facts AS (
+            SELECT
+                symbol_id,
+                end_date_id,
+                MAX(filed_date_id) as latest_filed_date_id
+            FROM financials.company_facts
+            WHERE fact_name IN ('NetCashProvidedByUsedInOperatingActivities', 'LiabilitiesCurrent')
+              AND fiscal_period = 'Q4' -- Use annual data for consistency
+            GROUP BY symbol_id, end_date_id
+        ),
+        fact_values AS (
+            SELECT
+                lf.symbol_id,
+                lf.end_date_id,
+                MAX(CASE WHEN cf.fact_name = 'NetCashProvidedByUsedInOperatingActivities' THEN cf.value ELSE NULL END) AS operating_cash_flow,
+                MAX(CASE WHEN cf.fact_name = 'LiabilitiesCurrent' THEN cf.value ELSE NULL END) AS current_liabilities
+            FROM latest_facts lf
+            JOIN financials.company_facts cf
+              ON lf.symbol_id = cf.symbol_id
+             AND lf.end_date_id = cf.end_date_id
+             AND lf.latest_filed_date_id = cf.filed_date_id
+            WHERE cf.fact_name IN ('NetCashProvidedByUsedInOperatingActivities', 'LiabilitiesCurrent')
+            GROUP BY lf.symbol_id, lf.end_date_id
+        )
+        SELECT
+            s.symbol,
+            d.date AS end_date,
+            fv.operating_cash_flow,
+            fv.current_liabilities,
+            CASE
+                WHEN fv.current_liabilities IS NOT NULL AND fv.current_liabilities <> 0 THEN fv.operating_cash_flow / fv.current_liabilities
+                ELSE NULL
+            END AS operating_cash_flow_ratio
+        FROM fact_values fv
+        JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
+        JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        ORDER BY s.symbol, d.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.operating_cash_flow_ratio created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.operating_cash_flow_ratio;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.operating_cash_flow_ratio refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_ocfr_symbol ON financials.operating_cash_flow_ratio (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_ocfr_end_date ON financials.operating_cash_flow_ratio (end_date);", return_df=False)
+            print("✅ Indices on financials.operating_cash_flow_ratio created successfully.")
+
+    @Job(execution_order=13)
+    def create_free_cash_flow_view(self, refresh=False):
+        """Creates or refreshes the free_cash_flow materialized view."""
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.free_cash_flow AS
+        WITH latest_facts AS (
+            SELECT
+                symbol_id,
+                end_date_id,
+                MAX(filed_date_id) as latest_filed_date_id
+            FROM financials.company_facts
+            WHERE fact_name IN ('NetCashProvidedByUsedInOperatingActivities', 'PaymentsToAcquirePropertyPlantAndEquipment')
+              AND fiscal_period = 'Q4' -- Use annual data for consistency
+            GROUP BY symbol_id, end_date_id
+        ),
+        fact_values AS (
+            SELECT
+                lf.symbol_id,
+                lf.end_date_id,
+                MAX(CASE WHEN cf.fact_name = 'NetCashProvidedByUsedInOperatingActivities' THEN cf.value ELSE NULL END) AS operating_cash_flow,
+                -- Capex is often reported as negative, FCF = CFO - Capex = CFO - (-Value) = CFO + Value
+                MAX(CASE WHEN cf.fact_name = 'PaymentsToAcquirePropertyPlantAndEquipment' THEN cf.value ELSE NULL END) AS capex
+            FROM latest_facts lf
+            JOIN financials.company_facts cf
+              ON lf.symbol_id = cf.symbol_id
+             AND lf.end_date_id = cf.end_date_id
+             AND lf.latest_filed_date_id = cf.filed_date_id
+            WHERE cf.fact_name IN ('NetCashProvidedByUsedInOperatingActivities', 'PaymentsToAcquirePropertyPlantAndEquipment')
+            GROUP BY lf.symbol_id, lf.end_date_id
+        )
+        SELECT
+            s.symbol,
+            d.date AS end_date,
+            fv.operating_cash_flow,
+            fv.capex,
+            (fv.operating_cash_flow + fv.capex) AS free_cash_flow -- Adding because capex is negative
+        FROM fact_values fv
+        JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
+        JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        ORDER BY s.symbol, d.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.free_cash_flow created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.free_cash_flow;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.free_cash_flow refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_fcf_symbol ON financials.free_cash_flow (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_fcf_end_date ON financials.free_cash_flow (end_date);", return_df=False)
+            print("✅ Indices on financials.free_cash_flow created successfully.")
+
+    @Job(execution_order=14)
+    def create_price_to_book_view(self, refresh=False):
+        """
+        Creates or refreshes the price_to_book materialized view.
+        Uses the market_caps view and finds the latest StockholdersEquity before the market cap date.
+        """
+        # Ensure market_caps view exists first (dependency)
+        self.create_market_cap_view(refresh=False)
+
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.price_to_book AS
+        WITH latest_equity AS (
+            -- Find the latest filed StockholdersEquity for each symbol before or on a given date
+            SELECT
+                cf.symbol_id,
+                d_filed.date AS filed_date,
+                d_end.date AS period_end_date,
+                cf.value AS total_equity,
+                ROW_NUMBER() OVER (PARTITION BY cf.symbol_id, d_filed.date ORDER BY cf.filed_date_id DESC, cf.end_date_id DESC) as rn
+            FROM financials.company_facts cf
+            JOIN metadata.dates d_filed ON cf.filed_date_id = d_filed.date_id
+            JOIN metadata.dates d_end ON cf.end_date_id = d_end.date_id
+            WHERE cf.fact_name = 'StockholdersEquity'
+              -- AND cf.fiscal_period = 'Q4' -- Optional: Use only annual equity
+        ),
+        ranked_equity AS (
+             SELECT
+                symbol_id,
+                filed_date,
+                period_end_date,
+                total_equity
+             FROM latest_equity
+             WHERE rn = 1
+        )
+        SELECT
+            mc.date AS price_date,
+            mc.symbol,
+            mc.price,
+            mc.shares,
+            eq.total_equity,
+            eq.period_end_date AS equity_period_end_date,
+            eq.filed_date AS equity_filed_date,
+            -- Calculate Book Value Per Share (BVPS)
+            CASE
+                WHEN mc.shares IS NOT NULL AND mc.shares <> 0 THEN eq.total_equity / mc.shares
+                ELSE NULL
+            END AS bvps,
+            -- Calculate P/B Ratio
+            CASE
+                WHEN mc.shares IS NOT NULL AND mc.shares <> 0 AND eq.total_equity IS NOT NULL AND eq.total_equity <> 0
+                THEN mc.price / (eq.total_equity / mc.shares)
+                ELSE NULL
+            END AS pb_ratio
+        FROM financials.market_caps mc
+        -- Find the most recent equity filed *before or on* the market cap's price date
+        LEFT JOIN ranked_equity eq ON mc.symbol = eq.symbol AND eq.filed_date <= mc.date
+        -- Ensure we only join the single most recent equity report available at the time of the price
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY mc.symbol, mc.date ORDER BY eq.filed_date DESC, eq.period_end_date DESC) = 1
+        ORDER BY mc.symbol, mc.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.price_to_book created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.price_to_book;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.price_to_book refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_pb_ratio_symbol ON financials.price_to_book (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_pb_ratio_price_date ON financials.price_to_book (price_date);", return_df=False)
+            print("✅ Indices on financials.price_to_book created successfully.")
+
+    @Job(execution_order=15)
+    def create_price_to_cash_flow_view(self, refresh=False):
+        """
+        Creates or refreshes the price_to_cash_flow materialized view.
+        Uses the market_caps view and finds the latest NetCashProvidedByUsedInOperatingActivities before the market cap date.
+        """
+        # Ensure market_caps view exists first (dependency)
+        self.create_market_cap_view(refresh=False)
+
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS financials.price_to_cash_flow AS
+        WITH latest_cash_flow AS (
+            -- Find the latest filed Operating Cash Flow for each symbol before or on a given date
+            SELECT
+                cf.symbol_id,
+                d_filed.date AS filed_date,
+                d_end.date AS period_end_date,
+                cf.value AS operating_cash_flow,
+                ROW_NUMBER() OVER (PARTITION BY cf.symbol_id, d_filed.date ORDER BY cf.filed_date_id DESC, cf.end_date_id DESC) as rn
+            FROM financials.company_facts cf
+            JOIN metadata.dates d_filed ON cf.filed_date_id = d_filed.date_id
+            JOIN metadata.dates d_end ON cf.end_date_id = d_end.date_id
+            WHERE cf.fact_name = 'NetCashProvidedByUsedInOperatingActivities'
+              AND cf.fiscal_period = 'Q4' -- Use annual OCF
+        ),
+        ranked_cash_flow AS (
+             SELECT
+                symbol_id,
+                filed_date,
+                period_end_date,
+                operating_cash_flow
+             FROM latest_cash_flow
+             WHERE rn = 1
+        )
+        SELECT
+            mc.date AS price_date,
+            mc.symbol,
+            mc.price,
+            mc.shares,
+            ocf.operating_cash_flow,
+            ocf.period_end_date AS ocf_period_end_date,
+            ocf.filed_date AS ocf_filed_date,
+            -- Calculate Operating Cash Flow Per Share (CFPS)
+            CASE
+                WHEN mc.shares IS NOT NULL AND mc.shares <> 0 THEN ocf.operating_cash_flow / mc.shares
+                ELSE NULL
+            END AS cfps,
+            -- Calculate P/CF Ratio
+            CASE
+                WHEN mc.shares IS NOT NULL AND mc.shares <> 0 AND ocf.operating_cash_flow IS NOT NULL AND ocf.operating_cash_flow <> 0
+                THEN mc.price / (ocf.operating_cash_flow / mc.shares)
+                ELSE NULL
+            END AS pcf_ratio
+        FROM financials.market_caps mc
+        -- Find the most recent OCF filed *before or on* the market cap's price date
+        LEFT JOIN ranked_cash_flow ocf ON mc.symbol = ocf.symbol AND ocf.filed_date <= mc.date
+        -- Ensure we only join the single most recent OCF report available at the time of the price
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY mc.symbol, mc.date ORDER BY ocf.filed_date DESC, ocf.period_end_date DESC) = 1
+        ORDER BY mc.symbol, mc.date;
+        """
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view financials.price_to_cash_flow created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY financials.price_to_cash_flow;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view financials.price_to_cash_flow refreshed successfully.")
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_pcf_ratio_symbol ON financials.price_to_cash_flow (symbol);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_pcf_ratio_price_date ON financials.price_to_cash_flow (price_date);", return_df=False)
+            print("✅ Indices on financials.price_to_cash_flow created successfully.")
+
 
 if __name__ == "__main__":
     view_manager = CreateViewManager()
     # Refresh all views
-    # Refresh all views in order
-    view_manager.create_market_cap_view(refresh=True)
-    view_manager.create_debt_to_equity_view(refresh=True)
-    view_manager.create_current_ratio_view(refresh=True)
-    view_manager.create_pe_ratio_view(refresh=True)
-    view_manager.create_fact_activity_view(refresh=True)
+    # Refresh all views in order (ensure dependencies like market_caps run first)
+    view_manager.create_market_cap_view(refresh=True)           # 0
+    view_manager.create_debt_to_equity_view(refresh=True)      # 1
+    view_manager.create_current_ratio_view(refresh=True)       # 2
+    view_manager.create_pe_ratio_view(refresh=True)            # 3
+    view_manager.create_fact_activity_view(refresh=True)       # 4
+    # New views based on top 50 facts
+    view_manager.create_return_on_assets_view(refresh=True)    # 5
+    view_manager.create_return_on_equity_view(refresh=True)    # 6
+    view_manager.create_debt_to_assets_view(refresh=True)      # 7
+    view_manager.create_equity_multiplier_view(refresh=True)   # 8
+    view_manager.create_cash_ratio_view(refresh=True)          # 9
+    view_manager.create_working_capital_view(refresh=True)     # 10
+    view_manager.create_interest_coverage_ratio_view(refresh=True) # 11
+    view_manager.create_operating_cash_flow_ratio_view(refresh=True) # 12
+    view_manager.create_free_cash_flow_view(refresh=True)      # 13
+    view_manager.create_price_to_book_view(refresh=True)       # 14
+    view_manager.create_price_to_cash_flow_view(refresh=True)  # 15
