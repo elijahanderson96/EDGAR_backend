@@ -1,10 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends # Add Depends
+from fastapi.security import APIKeyHeader # Import APIKeyHeader
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from starlette import status
+
+# Import helpers and models needed for API key verification
+from app.helpers import users as user_helpers
+from app.models.user import User
 
 from config import configs
 

@@ -13,6 +13,9 @@ from app.routes import auth
 from config.filepaths import APP_LOGS
 # Import the async connector - ensure path is correct relative to project root
 from database.async_database import db_connector
+# Import cache loading functions
+from app.cache import load_symbols_cache, load_dates_cache
+
 
 # --- Logging Configuration ---
 # Ensure the log directory exists
@@ -49,8 +52,17 @@ async def startup_event():
         if hasattr(db_connector, 'initialize') and callable(db_connector.initialize):
             await db_connector.initialize()
             logger.info("Database connection pool initialized successfully.")
+            # Load caches after pool is initialized
+            logger.info("Loading caches...")
+            await load_symbols_cache()
+            await load_dates_cache()
+            logger.info("Caches loaded.")
         else:
             logger.warning("Database connector does not have an 'initialize' method.")
+            # Optionally attempt cache loading even if initialize is missing, if pool might be created elsewhere
+            # logger.info("Attempting to load caches without explicit pool initialization...")
+            # await load_symbols_cache()
+            # await load_dates_cache()
     except Exception as e:
         logger.error(f"CRITICAL: Failed to initialize database connection pool: {e}", exc_info=True)
         # Depending on the severity, you might want to prevent startup
@@ -122,8 +134,13 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 
 # --- API Routers ---
+# Import routers
+from app.routes import auth, financials
+
 # Include the authentication router
 app.include_router(auth.router)
+# Include the financials router
+app.include_router(financials.router)
 
 
 # Add other routers here as your application grows
