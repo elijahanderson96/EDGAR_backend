@@ -1,13 +1,14 @@
 import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
 
-from app.models.auth import Token, UserCreate, PasswordResetRequest, PasswordResetConfirm, EmailVerificationRequest, UserLogin
-from app.models.user import User
-from app.helpers import users as user_helpers
 from app.helpers import security
-# Assuming email_utils is correctly placed relative to the project root
-from helpers.email_utils import send_authentication_email, send_validation_email, is_valid_email
+from app.helpers import users as user_helpers
+from app.models.auth import Token, UserCreate, PasswordResetRequest, PasswordResetConfirm, UserLogin
+from app.models.user import User
+from helpers.email_utils import send_authentication_email, is_valid_email
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -15,14 +16,15 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 # OAuth2 scheme pointing to the /token endpoint for form data login
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
+
 # --- Dependency to get current user ---
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
     """
     Dependency to verify the access token and return the current user.
     Raises HTTPException 401 if token is invalid, expired, or user not found/verified.
     """
-    payload = security.verify_token(token, expected_type="access") # verify_token now raises HTTPException on failure
-    user_id: int = payload.get("sub") # Already checked for None in verify_token
+    payload = security.verify_token(token, expected_type="access")  # verify_token now raises HTTPException on failure
+    user_id: int = payload.get("sub")  # Already checked for None in verify_token
 
     user = await user_helpers.get_user_by_id(user_id)
     if user is None:
@@ -47,7 +49,7 @@ async def register_user(user_in: UserCreate, background_tasks: BackgroundTasks, 
     """Registers a new user and sends a verification email."""
     # Validate email format server-side as well
     if not is_valid_email(user_in.email):
-         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email format")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email format")
 
     # Check if username or email already exists
     existing_user_email = await user_helpers.get_user_by_email(user_in.email)
@@ -71,7 +73,7 @@ async def register_user(user_in: UserCreate, background_tasks: BackgroundTasks, 
 
     # Send verification email in the background
     background_tasks.add_task(
-        send_authentication_email, # Assuming this function is suitable
+        send_authentication_email,  # Assuming this function is suitable
         recipient_email=db_user.email,
         authentication_link=verification_link,
         # You might want to customize the subject/body for verification
@@ -89,10 +91,11 @@ async def verify_email(token: str):
     try:
         payload = security.verify_token(token, expected_type="verification")
     except HTTPException as e:
-         # Reraise specific errors from verify_token if needed, or return generic error
-         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification token") from e
+        # Reraise specific errors from verify_token if needed, or return generic error
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Invalid or expired verification token") from e
 
-    user_id = payload.get("sub") # Already checked for None in verify_token
+    user_id = payload.get("sub")  # Already checked for None in verify_token
 
     user = await user_helpers.get_user_by_id(user_id)
     if not user:
@@ -107,7 +110,8 @@ async def verify_email(token: str):
     success = await user_helpers.set_user_authenticated(user_id)
     if not success:
         logger.error(f"Failed to update user authenticated status for ID: {user_id}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not verify email due to a server error")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Could not verify email due to a server error")
 
     logger.info(f"Email successfully verified for user ID: {user_id}")
     return {"message": "Email verified successfully"}
@@ -142,16 +146,15 @@ async def login_for_access_token_json(user_credentials: UserLogin, response: Res
     except Exception as e:
         logger.error(f"Failed to update last login for user ID {user.id}: {e}")
 
-
     # Generate tokens
     access_token = security.create_access_token(data={"sub": user.id, "username": user.username})
     refresh_token = security.create_refresh_token(data={"sub": user.id})
 
     # Store refresh token securely (WARNING: current implementation is insecure)
     if not await user_helpers.store_refresh_token(user.id, refresh_token):
-         logger.error(f"Failed to store refresh token for user ID {user.id}")
-         # Decide if login should fail if refresh token can't be stored
-         # raise HTTPException(status_code=500, detail="Could not process login.")
+        logger.error(f"Failed to store refresh token for user ID {user.id}")
+        # Decide if login should fail if refresh token can't be stored
+        # raise HTTPException(status_code=500, detail="Could not process login.")
 
     logger.info(f"User {user.username} logged in successfully.")
 
@@ -160,16 +163,16 @@ async def login_for_access_token_json(user_credentials: UserLogin, response: Res
         key="access_token",
         value=f"Bearer {access_token}",
         httponly=True,
-        samesite="lax", # or 'strict'
-        secure=True, # Set secure=True if served over HTTPS
+        samesite="strict",  # or 'strict'
+        secure=True,  # Set secure=True if served over HTTPS
         max_age=security.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        samesite="lax", # or 'strict'
-        secure=True, # Set secure=True if served over HTTPS
+        samesite="strict",  # or 'strict'
+        secure=True,  # Set secure=True if served over HTTPS
         max_age=security.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
 
@@ -203,7 +206,7 @@ async def refresh_access_token(response: Response, request: Request):
         response.delete_cookie("refresh_token")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token") from e
 
-    user_id = payload.get("sub") # Already checked
+    user_id = payload.get("sub")  # Already checked
 
     # Verify if the refresh token is still valid in the database
     is_valid_in_db = await user_helpers.verify_refresh_token(user_id, refresh_token)
@@ -216,10 +219,10 @@ async def refresh_access_token(response: Response, request: Request):
 
     user = await user_helpers.get_user_by_id(user_id)
     if not user:
-         logger.error(f"User {user_id} associated with valid refresh token not found.")
-         response.delete_cookie("access_token")
-         response.delete_cookie("refresh_token")
-         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        logger.error(f"User {user_id} associated with valid refresh token not found.")
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     # Issue new tokens
     new_access_token = security.create_access_token(data={"sub": user.id, "username": user.username})
@@ -237,13 +240,13 @@ async def refresh_access_token(response: Response, request: Request):
     response.set_cookie(
         key="access_token",
         value=f"Bearer {new_access_token}",
-        httponly=True, samesite="lax", secure=True, # Adjust secure based on HTTPS
+        httponly=True, samesite="lax", secure=True,  # Adjust secure based on HTTPS
         max_age=security.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
     response.set_cookie(
         key="refresh_token",
         value=new_refresh_token,
-        httponly=True, samesite="lax", secure=True, # Adjust secure based on HTTPS
+        httponly=True, samesite="lax", secure=True,  # Adjust secure based on HTTPS
         max_age=security.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
 
@@ -259,7 +262,8 @@ async def logout(response: Response, request: Request):
     if refresh_token:
         try:
             # Decode token *without* verifying expiry to get user_id for invalidation
-            payload = jwt.decode(refresh_token, security.SECRET_KEY, algorithms=[security.ALGORITHM], options={"verify_exp": False})
+            payload = jwt.decode(refresh_token, security.SECRET_KEY, algorithms=[security.ALGORITHM],
+                                 options={"verify_exp": False})
             if payload.get("type") == "refresh":
                 user_id = payload.get("sub")
         except JWTError as e:
@@ -281,12 +285,13 @@ async def logout(response: Response, request: Request):
 
 
 @router.post("/request-password-reset", status_code=status.HTTP_200_OK)
-async def request_password_reset(request_data: PasswordResetRequest, background_tasks: BackgroundTasks, request: Request):
+async def request_password_reset(request_data: PasswordResetRequest, background_tasks: BackgroundTasks,
+                                 request: Request):
     """Sends a password reset email if the user exists."""
     if not is_valid_email(request_data.email):
-         # Don't reveal invalid format, treat like non-existent user
-         logger.info(f"Password reset requested for invalid email format: {request_data.email}")
-         return {"message": "If an account with this email exists, a password reset link has been sent."}
+        # Don't reveal invalid format, treat like non-existent user
+        logger.info(f"Password reset requested for invalid email format: {request_data.email}")
+        return {"message": "If an account with this email exists, a password reset link has been sent."}
 
     user = await user_helpers.get_user_by_email(request_data.email)
     if user:
@@ -294,14 +299,14 @@ async def request_password_reset(request_data: PasswordResetRequest, background_
         reset_token = security.create_password_reset_token(data={"sub": user.id})
         base_url = str(request.base_url).rstrip('/')
         # TODO: Update frontend URL/path for the password reset page/component
-        reset_link = f"http://localhost:3000/reset-password?token={reset_token}" # Example frontend link
+        reset_link = f"http://localhost:3000/reset-password?token={reset_token}"  # Example frontend link
 
         # Send email (adapt send_authentication_email or create a new function)
         # It's better to have a dedicated function for password reset emails
         background_tasks.add_task(
-            send_authentication_email, # Replace with dedicated function if possible
+            send_authentication_email,  # Replace with dedicated function if possible
             recipient_email=user.email,
-            authentication_link=reset_link, # Pass the reset link
+            authentication_link=reset_link,  # Pass the reset link
             # Customize subject/body if using generic function:
             # subject="Password Reset Request",
             # body=f"Click here to reset your password: {reset_link}"
@@ -321,15 +326,17 @@ async def reset_password(reset_data: PasswordResetConfirm):
     try:
         payload = security.verify_token(reset_data.token, expected_type="password_reset")
     except HTTPException as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired password reset token") from e
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Invalid or expired password reset token") from e
 
-    user_id = payload.get("sub") # Already checked
+    user_id = payload.get("sub")  # Already checked
 
     # Update password and invalidate refresh token
     success = await user_helpers.update_user_password(user_id, reset_data.new_password)
     if not success:
         logger.error(f"Failed to reset password for user ID {user_id}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not reset password due to a server error")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Could not reset password due to a server error")
 
     logger.info(f"Password successfully reset for user ID {user_id}")
     return {"message": "Password has been reset successfully."}
