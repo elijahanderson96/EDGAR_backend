@@ -168,14 +168,25 @@ async def get_company_facts(
         processed_data = []
         # Iterate through DataFrame rows
         for index, row in results_df.iterrows():
-            start_dt = get_date_from_id(row.get('start_date_id'))
-            end_dt = get_date_from_id(row.get('end_date_id'))
-            filed_dt = get_date_from_id(row.get('filed_date_id'))
+            # Handle potentially missing start_date_id for point-in-time facts
+            start_date_id = row.get('start_date_id')
+            start_dt = get_date_from_id(start_date_id) if pd.notna(start_date_id) else None
 
-            # Handle cases where date_id might not be in cache (should be rare if cache is complete)
-            # Check for pd.NA or None if IDs might be missing in DB
-            if start_dt is None or end_dt is None or filed_dt is None:
-                logger.warning(f"Could not resolve date IDs for row: {row.to_dict()}. Skipping.")
+            # Resolve required dates (end_date, filed_date)
+            end_date_id = row.get('end_date_id')
+            filed_date_id = row.get('filed_date_id')
+
+            # Check if required date IDs exist and can be resolved
+            if pd.isna(end_date_id) or pd.isna(filed_date_id):
+                 logger.warning(f"Missing required end_date_id or filed_date_id for row: {row.to_dict()}. Skipping.")
+                 continue
+
+            end_dt = get_date_from_id(end_date_id)
+            filed_dt = get_date_from_id(filed_date_id)
+
+            # Skip row only if required dates (end_dt, filed_dt) couldn't be resolved
+            if end_dt is None or filed_dt is None:
+                logger.warning(f"Could not resolve required end_date_id ({end_date_id}) or filed_date_id ({filed_date_id}) for row: {row.to_dict()}. Skipping.")
                 continue
 
             # Create the Pydantic model instance for the response item

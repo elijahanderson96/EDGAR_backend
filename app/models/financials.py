@@ -5,7 +5,7 @@ from datetime import date
 class CompanyFactBase(BaseModel):
     fact_name: str
     unit: str
-    start_date: date
+    start_date: Optional[date] = None # Make start_date optional
     end_date: date
     filed_date: date
     fiscal_year: int
