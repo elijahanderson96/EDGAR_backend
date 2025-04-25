@@ -103,7 +103,13 @@ async def verify_email(token: str):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Invalid or expired verification token") from e
 
-    user_id = payload.get("sub")  # Already checked for None in verify_token
+    user_id_str = payload.get("sub") # Get 'sub' as string
+
+    try:
+        user_id = int(user_id_str) # Convert 'sub' string to integer
+    except (ValueError, TypeError):
+         logger.error(f"Invalid user ID format in verification token payload: {user_id_str}")
+         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user identifier in token")
 
     user = await user_helpers.get_user_by_id(user_id)
     if not user:
@@ -214,7 +220,16 @@ async def refresh_access_token(response: Response, request: Request):
         response.delete_cookie("refresh_token")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token") from e
 
-    user_id = payload.get("sub")  # Already checked
+    user_id_str = payload.get("sub") # Get 'sub' as string
+
+    try:
+        user_id = int(user_id_str) # Convert 'sub' string to integer
+    except (ValueError, TypeError):
+        logger.error(f"Invalid user ID format in refresh token payload: {user_id_str}")
+        # Clear cookies as the token is invalid
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user identifier in token")
 
     # Verify if the refresh token is still valid in the database
     is_valid_in_db = await user_helpers.verify_refresh_token(user_id, refresh_token)
@@ -273,7 +288,13 @@ async def logout(response: Response, request: Request):
             payload = jwt.decode(refresh_token, security.SECRET_KEY, algorithms=[security.ALGORITHM],
                                  options={"verify_exp": False})
             if payload.get("type") == "refresh":
-                user_id = payload.get("sub")
+                user_id_str = payload.get("sub") # Get 'sub' as string
+                try:
+                    # Convert to int only if it's a valid string representation of an int
+                    user_id = int(user_id_str) if user_id_str else None
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid user ID format '{user_id_str}' in refresh token during logout.")
+                    user_id = None # Treat invalid format as missing ID
         except JWTError as e:
             logger.warning(f"Error decoding refresh token during logout: {e}")
             # Proceed to clear cookies even if token is malformed
@@ -337,7 +358,14 @@ async def reset_password(reset_data: PasswordResetConfirm):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Invalid or expired password reset token") from e
 
-    user_id = payload.get("sub")  # Already checked
+    user_id_str = payload.get("sub") # Get 'sub' as string
+
+    try:
+        user_id = int(user_id_str) # Convert 'sub' string to integer
+    except (ValueError, TypeError):
+        logger.error(f"Invalid user ID format in password reset token payload: {user_id_str}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user identifier in token")
+
 
     # Update password and invalidate refresh token
     success = await user_helpers.update_user_password(user_id, reset_data.new_password)
