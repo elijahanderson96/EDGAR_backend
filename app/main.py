@@ -1,17 +1,18 @@
 import logging
 import os
+
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
 from jose import JWTError
 
-# Import the async connector - ensure path is correct relative to project root
-from database.async_database import db_connector
 # Import the auth router
 from app.routes import auth
 # Import log path - ensure path is correct relative to project root
 from config.filepaths import APP_LOGS
+# Import the async connector - ensure path is correct relative to project root
+from database.async_database import db_connector
 
 # --- Logging Configuration ---
 # Ensure the log directory exists
@@ -24,7 +25,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_file_path),
-        logging.StreamHandler() # Also print logs to console
+        logging.StreamHandler()  # Also print logs to console
     ]
 )
 # Get logger for this module
@@ -36,6 +37,7 @@ app = FastAPI(
     description="API for user authentication and accessing SEC financial data.",
     version="0.1.0"
 )
+
 
 # --- Database Connection Pool Management ---
 @app.on_event("startup")
@@ -54,12 +56,13 @@ async def startup_event():
         # Depending on the severity, you might want to prevent startup
         # raise SystemExit(f"Could not connect to database: {e}")
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Close database connection pool on shutdown."""
     logger.info("Application shutdown: Closing database connection pool...")
     try:
-         # Ensure the connector has a close method
+        # Ensure the connector has a close method
         if hasattr(db_connector, 'close') and callable(db_connector.close):
             await db_connector.close()
             logger.info("Database connection pool closed.")
@@ -73,29 +76,31 @@ async def shutdown_event():
 # Configure CORS (Cross-Origin Resource Sharing)
 # Adjust origins based on your React client's URL(s)
 origins = [
-    "http://localhost",         # Allow local development (often needed for server itself)
-    "http://localhost:3000",    # Default React dev server port
-    "http://localhost:5173",    # Default Vite React dev server port
+    "http://localhost",  # Allow local development (often needed for server itself)
+    "http://localhost:3000",  # Default React dev server port
+    "http://localhost:5173",  # Default Vite React dev server port
     # Add your deployed frontend URL here, e.g., "https://your-frontend.com"
     # Add your deployed API URL if different and needed for self-calls
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,      # List of allowed origins
-    allow_credentials=True,     # Allow cookies to be sent with requests
-    allow_methods=["*"],        # Allows all standard methods (GET, POST, etc.)
-    allow_headers=["*"],        # Allows all headers
+    allow_origins=origins,  # List of allowed origins
+    allow_credentials=True,  # Allow cookies to be sent with requests
+    allow_methods=["*"],  # Allows all standard methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
 )
+
 
 # --- Exception Handlers ---
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-	logger.warning(f"Request validation error: {exc.errors()}")
-	return JSONResponse(
-		status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-		content={"detail": exc.errors()},
-	)
+    logger.warning(f"Request validation error: {exc.errors()}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors()},
+    )
+
 
 @app.exception_handler(JWTError)
 async def jwt_exception_handler(request: Request, exc: JWTError):
@@ -105,6 +110,7 @@ async def jwt_exception_handler(request: Request, exc: JWTError):
         content={"detail": "Invalid or expired token"},
         headers={"WWW-Authenticate": "Bearer"},
     )
+
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
@@ -118,6 +124,8 @@ async def generic_exception_handler(request: Request, exc: Exception):
 # --- API Routers ---
 # Include the authentication router
 app.include_router(auth.router)
+
+
 # Add other routers here as your application grows
 # e.g., app.include_router(financials.router)
 
