@@ -36,6 +36,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    # Ensure 'sub' is a string for JWT standard compliance
+    if "sub" in to_encode:
+        to_encode["sub"] = str(to_encode["sub"])
     to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -48,6 +51,9 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) 
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    # Ensure 'sub' is a string
+    if "sub" in to_encode:
+        to_encode["sub"] = str(to_encode["sub"])
     to_encode.update({"exp": expire, "type": "refresh"})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -57,6 +63,9 @@ def create_verification_token(data: dict) -> str:
     """Creates a JWT email verification token."""
     expire = datetime.now(timezone.utc) + timedelta(hours=EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
     to_encode = data.copy()
+    # Ensure 'sub' is a string
+    if "sub" in to_encode:
+        to_encode["sub"] = str(to_encode["sub"])
     to_encode.update({"exp": expire, "type": "verification"})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -66,6 +75,9 @@ def create_password_reset_token(data: dict) -> str:
     """Creates a JWT password reset token."""
     expire = datetime.now(timezone.utc) + timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRE_HOURS)
     to_encode = data.copy()
+    # Ensure 'sub' is a string
+    if "sub" in to_encode:
+        to_encode["sub"] = str(to_encode["sub"])
     to_encode.update({"exp": expire, "type": "password_reset"})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt

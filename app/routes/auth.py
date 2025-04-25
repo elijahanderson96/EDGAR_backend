@@ -21,8 +21,18 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
     Dependency to verify the access token and return the current user.
     Raises HTTPException 401 if token is invalid, expired, or user not found/verified.
     """
-    payload = security.verify_token(token, expected_type="access")  # verify_token now raises HTTPException on failure
-    user_id: int = payload.get("sub")  # Already checked for None in verify_token
+    payload = security.verify_token(token, expected_type="access") # verify_token returns payload with string 'sub'
+    user_id_str: str = payload.get("sub") # Get 'sub' as string
+
+    try:
+        user_id = int(user_id_str) # Convert 'sub' string to integer
+    except (ValueError, TypeError):
+        logger.error(f"Invalid user ID format in token payload: {user_id_str}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user identifier in token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     user = await user_helpers.get_user_by_id(user_id)
     if user is None:
