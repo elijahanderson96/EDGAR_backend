@@ -60,7 +60,8 @@ class AsyncpgConnector:
                     if return_df:
                         data = [dict(record) for record in result]
                         return pd.DataFrame(data)
-                    return None
+                    # Return the list of asyncpg.Record objects if return_df is False
+                    return result
             except Exception as e:
                 self.logger.error(f"Error occurred while executing query: {e}")
                 raise e
