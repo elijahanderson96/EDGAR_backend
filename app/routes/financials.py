@@ -1,16 +1,24 @@
 import logging
 from datetime import date
-from typing import Optional
+from typing import Optional, List # Ensure List is imported if needed elsewhere, otherwise remove
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
+# Import APIKeyHeader for the dependency
+from fastapi.security import APIKeyHeader
 from starlette import status
 
-from app.cache import get_symbol_id, get_date_id, get_date_from_id
-from app.helpers.security import verify_api_key
-
+# Import cache functions
+from app.cache import get_symbol_id, get_date_id, get_date_from_id, get_symbol_from_id # Added get_symbol_from_id back just in case
+# Remove verify_api_key import from security, it will be defined locally
+# from app.helpers.security import verify_api_key
+# Import user helpers needed for the dependency
+from app.helpers import users as user_helpers
+# Import models
 from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams
 from app.models.user import User
+# Import database connector
 from database.async_database import db_connector
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
