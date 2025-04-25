@@ -95,6 +95,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.total_liabilities IS NOT NULL AND fv.total_equity IS NOT NULL -- Ensure both facts exist for the period
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -150,6 +151,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.current_assets IS NOT NULL AND fv.current_liabilities IS NOT NULL -- Ensure both facts exist
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -221,8 +223,8 @@ class CreateViewManager:
                 ELSE NULL
             END AS pe_ratio
         FROM financials.market_caps mc
-        -- Find the most recent net income filed *before or on* the market cap's price date
-        LEFT JOIN ranked_net_income ni ON mc.symbol = ni.symbol AND ni.filed_date <= mc.date
+        -- Use INNER JOIN to ensure we only include price dates where corresponding earnings exist
+        INNER JOIN ranked_net_income ni ON mc.symbol = ni.symbol AND ni.filed_date <= mc.date
         -- Ensure we only join the single most recent earnings report available at the time of the price
         QUALIFY ROW_NUMBER() OVER (PARTITION BY mc.symbol, mc.date ORDER BY ni.filed_date DESC, ni.period_end_date DESC) = 1
         ORDER BY mc.symbol, mc.date;
@@ -337,6 +339,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.net_income IS NOT NULL AND fv.total_assets IS NOT NULL -- Ensure both facts exist for the period
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -395,6 +398,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.net_income IS NOT NULL AND fv.total_equity IS NOT NULL -- Ensure both facts exist for the period
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -448,6 +452,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.total_liabilities IS NOT NULL AND fv.total_assets IS NOT NULL -- Ensure both facts exist
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -501,6 +506,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.total_assets IS NOT NULL AND fv.total_equity IS NOT NULL -- Ensure both facts exist
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -554,6 +560,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.cash_equivalents IS NOT NULL AND fv.current_liabilities IS NOT NULL -- Ensure both facts exist
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -604,6 +611,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.current_assets IS NOT NULL AND fv.current_liabilities IS NOT NULL -- Ensure both facts exist
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -658,6 +666,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.operating_income IS NOT NULL AND fv.interest_expense IS NOT NULL -- Ensure both facts exist
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -712,6 +721,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.operating_cash_flow IS NOT NULL AND fv.current_liabilities IS NOT NULL -- Ensure both facts exist
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -764,6 +774,7 @@ class CreateViewManager:
         FROM fact_values fv
         JOIN metadata.symbols s ON fv.symbol_id = s.symbol_id
         JOIN metadata.dates d ON fv.end_date_id = d.date_id
+        WHERE fv.operating_cash_flow IS NOT NULL AND fv.capex IS NOT NULL -- Ensure both facts exist
         ORDER BY s.symbol, d.date;
         """
         db_connector.run_query(create_query, return_df=False)
@@ -831,8 +842,8 @@ class CreateViewManager:
                 ELSE NULL
             END AS pb_ratio
         FROM financials.market_caps mc
-        -- Find the most recent equity filed *before or on* the market cap's price date
-        LEFT JOIN ranked_equity eq ON mc.symbol = eq.symbol AND eq.filed_date <= mc.date
+        -- Use INNER JOIN to ensure we only include price dates where corresponding equity exists
+        INNER JOIN ranked_equity eq ON mc.symbol = eq.symbol AND eq.filed_date <= mc.date
         -- Ensure we only join the single most recent equity report available at the time of the price
         QUALIFY ROW_NUMBER() OVER (PARTITION BY mc.symbol, mc.date ORDER BY eq.filed_date DESC, eq.period_end_date DESC) = 1
         ORDER BY mc.symbol, mc.date;
@@ -902,8 +913,8 @@ class CreateViewManager:
                 ELSE NULL
             END AS pcf_ratio
         FROM financials.market_caps mc
-        -- Find the most recent OCF filed *before or on* the market cap's price date
-        LEFT JOIN ranked_cash_flow ocf ON mc.symbol = ocf.symbol AND ocf.filed_date <= mc.date
+        -- Use INNER JOIN to ensure we only include price dates where corresponding OCF exists
+        INNER JOIN ranked_cash_flow ocf ON mc.symbol = ocf.symbol AND ocf.filed_date <= mc.date
         -- Ensure we only join the single most recent OCF report available at the time of the price
         QUALIFY ROW_NUMBER() OVER (PARTITION BY mc.symbol, mc.date ORDER BY ocf.filed_date DESC, ocf.period_end_date DESC) = 1
         ORDER BY mc.symbol, mc.date;
