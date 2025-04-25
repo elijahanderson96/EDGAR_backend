@@ -11,3 +11,8 @@ requests
 tqdm
 yfinance
 boto3
+passlib[bcrypt]
+python-multipart
+emails
+uvicorn[standard]
+pydantic[email]
