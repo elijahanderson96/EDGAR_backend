@@ -57,17 +57,31 @@ async def get_user_by_id(user_id: int) -> Optional[UserInDB]:
         logger.error(f"Error fetching user by id {user_id}: {e}")
         return None
 
+async def get_user_by_api_key(api_key: str) -> Optional[UserInDB]:
+    """Fetches a user by API key."""
+    query = "SELECT * FROM users.users WHERE api_key = $1"
+    try:
+        user_record = await db_connector.run_query(query, params=[api_key], return_df=False, fetch_one=True)
+        return await _map_record_to_user_in_db(user_record)
+    except Exception as e:
+        logger.error(f"Error fetching user by api_key {api_key}: {e}")
+        return None
+
+def generate_api_key() -> str:
+    """Generates a unique API key."""
+    return str(uuid.uuid4())
 
 async def create_user(user: UserCreate) -> Optional[UserInDB]:
-    """Creates a new user in the database."""
+    """Creates a new user in the database with a unique API key."""
     hashed_password = get_password_hash(user.password)
+    api_key = generate_api_key()
     query = """
-        INSERT INTO users.users (username, email, password_hash, is_authenticated)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO users.users (username, email, password_hash, is_authenticated, api_key)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id, username, email, password_hash, last_logged_in, auth_token, is_authenticated, api_key;
     """
-    # Start as not authenticated, generate API key later if needed
-    params = [user.username, user.email, hashed_password, False]
+    # Start as not authenticated, include generated API key
+    params = [user.username, user.email, hashed_password, False, api_key]
     try:
         # Ensure run_query with RETURNING works correctly with fetch_one=True
         new_user_record = await db_connector.run_query(query, params=params, return_df=False, fetch_one=True)
