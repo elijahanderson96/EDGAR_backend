@@ -4,7 +4,7 @@ python-jose[cryptography]
 pandas
 python-dotenv
 asyncpg
-bcrypt
+# bcrypt is installed by passlib[bcrypt], remove explicit dependency
 psycopg2-binary
 sqlalchemy
 requests
