@@ -1,10 +1,11 @@
 from database.database import db_connector
+from orchestration.decorator import Pipeline, Job
 
+@Pipeline(schedule='* * * * *')
+class CreateViewManager:
 
-class ViewManager:
-
-    @staticmethod
-    def create_market_cap_view(refresh=False):
+    @Job(execution_order=0)
+    def create_market_cap_view(self, refresh=False):
         create_query = """
         CREATE MATERIALIZED VIEW IF NOT EXISTS financials.market_caps AS
         WITH max_date_cf AS (
@@ -56,5 +57,5 @@ class ViewManager:
 
 
 if __name__ == "__main__":
-    view_manager = ViewManager()
+    view_manager = CreateViewManager()
     view_manager.create_market_cap_view(refresh=True)
