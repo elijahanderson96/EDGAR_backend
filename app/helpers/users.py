@@ -14,10 +14,14 @@ async def _map_record_to_user_in_db(user_record: Optional[Dict]) -> Optional[Use
     if not user_record:
         return None
     try:
-        # Ensure boolean conversion is handled correctly if needed
-        user_record['is_authenticated'] = bool(user_record.get('is_authenticated', False))
-        return UserInDB(**user_record)
+        # Convert asyncpg.Record to a mutable dictionary
+        user_data = dict(user_record)
+        # Ensure boolean conversion is handled correctly on the dictionary
+        user_data['is_authenticated'] = bool(user_data.get('is_authenticated', False))
+        # Create the Pydantic model from the dictionary
+        return UserInDB(**user_data)
     except Exception as e:
+        # Log the original record if conversion fails
         logger.error(f"Error mapping record to UserInDB: {e} - Record: {user_record}")
         return None
 
