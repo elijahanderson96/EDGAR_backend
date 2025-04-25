@@ -157,7 +157,6 @@ async def authenticate(auth_token: str):
 @auth_router.post("/refresh", response_model=Token)
 async def refresh_token(refresh_token: str = Depends(get_refresh_token_from_cookie)):
     """Refreshes the access token using a valid refresh token from the cookie."""
-    try:
     if refresh_token is None:
          raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token missing")
     try:
