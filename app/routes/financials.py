@@ -2,6 +2,7 @@ import logging
 from datetime import date
 from typing import Optional
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from fastapi.security import APIKeyHeader
 from starlette import status
