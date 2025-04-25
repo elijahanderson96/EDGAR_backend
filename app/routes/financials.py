@@ -9,7 +9,8 @@ from starlette import status
 
 from app.cache import get_symbol_id, get_date_id, get_date_from_id
 from app.helpers import users as user_helpers
-from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams
+# Import the new model and date type
+from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams, SymbolMetadataResponse # Add SymbolMetadataResponse
 from app.models.user import User
 from database.async_database import db_connector
 
