@@ -3,7 +3,8 @@ from typing import Optional, Dict, Any
 from datetime import date
 
 from database.async_database import db_connector # Use the async connector
-from app.models.user import UserInDB, UserCreate, User
+from app.models.user import UserInDB, User
+from app.models.auth import UserCreate # Import UserCreate from auth model
 from app.helpers.security import get_password_hash
 
 logger = logging.getLogger(__name__)

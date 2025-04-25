@@ -6,9 +6,11 @@ from jose import JWTError, jwt
 
 from app.helpers import security
 from app.helpers import users as user_helpers
+# UserCreate is already correctly imported here from app.models.auth, no change needed in this specific import line.
+# However, let's ensure all auth models come from auth.py and user models from user.py for clarity.
 from app.models.auth import Token, UserCreate, PasswordResetRequest, PasswordResetConfirm, UserLogin
-from app.models.user import User
-from helpers.email_utils import send_authentication_email, is_valid_email
+from app.models.user import User # User model comes from user.py
+from helpers.email_utils import send_authentication_email, is_valid_email # Email utils from top-level helpers
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
