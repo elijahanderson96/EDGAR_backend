@@ -1,24 +1,16 @@
 import logging
 from datetime import date
-from typing import Optional, List # Ensure List is imported if needed elsewhere, otherwise remove
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
-# Import APIKeyHeader for the dependency
 from fastapi.security import APIKeyHeader
 from starlette import status
 
-# Import cache functions
-from app.cache import get_symbol_id, get_date_id, get_date_from_id, get_symbol_from_id # Added get_symbol_from_id back just in case
-# Remove verify_api_key import from security, it will be defined locally
-# from app.helpers.security import verify_api_key
-# Import user helpers needed for the dependency
+from app.cache import get_symbol_id, get_date_id, get_date_from_id
 from app.helpers import users as user_helpers
-# Import models
 from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams
 from app.models.user import User
-# Import database connector
 from database.async_database import db_connector
-
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -28,7 +20,8 @@ router = APIRouter(
 )
 
 # --- API Key Verification Dependency (Moved Here) ---
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False) # Set auto_error=False for custom handling
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)  # Set auto_error=False for custom handling
+
 
 async def verify_api_key(api_key: str = Depends(api_key_header)) -> User:
     """
@@ -45,7 +38,7 @@ async def verify_api_key(api_key: str = Depends(api_key_header)) -> User:
 
     user = await user_helpers.get_user_by_api_key(api_key)
     if user is None:
-        logger.warning(f"Invalid API Key received: {api_key[:4]}...{api_key[-4:]}") # Log partial key for debugging
+        logger.warning(f"Invalid API Key received: {api_key[:4]}...{api_key[-4:]}")  # Log partial key for debugging
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API Key",
@@ -53,8 +46,8 @@ async def verify_api_key(api_key: str = Depends(api_key_header)) -> User:
 
     # Optionally, check if the user associated with the API key is active/verified
     if not user.is_authenticated:
-         logger.warning(f"API Key belongs to unverified user: {user.username} (ID: {user.id})")
-         raise HTTPException(
+        logger.warning(f"API Key belongs to unverified user: {user.username} (ID: {user.id})")
+        raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account associated with this API key is not verified.",
         )
@@ -160,10 +153,10 @@ async def get_company_facts(
     query += " ORDER BY end_date_id DESC;"  # Order by date descending
 
     try:
-        results = await db_connector.run_query(query, params=query_params, return_df=False,
-                                               fetch_one=False)  # fetch_one=False returns list of records
-
-        if not results:
+        print(query)
+        print(query_params)
+        results = await db_connector.run_query(query, params=query_params)
+        if results.empty:
             logger.warning(f"No facts found for symbol_id {symbol_id} and fact_name {fact_name} with given filters.")
             # Return empty list instead of 404 if symbol/fact exists but no data for filters
             # raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No facts found for the given criteria.")
