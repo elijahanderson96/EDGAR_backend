@@ -240,11 +240,63 @@ class CreateViewManager:
             db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_pe_ratio_price_date ON financials.price_to_earnings (price_date);", return_df=False)
             print("✅ Indices on financials.price_to_earnings created successfully.")
 
+    @Job(execution_order=4)
+    def create_fact_activity_view(self, refresh=False):
+        """
+        Creates or refreshes a materialized view summarizing the activity status of each fact_name.
+        """
+        # Note: This view is placed in the 'metadata' schema as it describes the facts themselves.
+        create_query = """
+        CREATE MATERIALIZED VIEW IF NOT EXISTS metadata.fact_activity_status AS
+        WITH FactDates AS (
+            SELECT
+                fact_name,
+                MIN(d_filed.date) AS first_filed_date,
+                MAX(d_filed.date) AS last_filed_date,
+                COUNT(*) AS total_reports,
+                COUNT(DISTINCT symbol_id) AS distinct_symbols_reporting
+            FROM financials.company_facts cf
+            JOIN metadata.dates d_filed ON cf.filed_date_id = d_filed.date_id
+            GROUP BY fact_name
+        )
+        SELECT
+            fd.fact_name,
+            fd.first_filed_date,
+            fd.last_filed_date,
+            fd.total_reports,
+            fd.distinct_symbols_reporting,
+            -- Define 'Active' if last reported within the last 2 years (adjust threshold as needed)
+            CASE
+                WHEN fd.last_filed_date >= (CURRENT_DATE - INTERVAL '2 years') THEN 'Active'
+                ELSE 'Inactive'
+            END AS activity_status,
+            -- Calculate years since last report (integer part)
+            EXTRACT(YEAR FROM AGE(CURRENT_DATE, fd.last_filed_date))::INTEGER AS years_since_last_report
+        FROM FactDates fd
+        ORDER BY fd.fact_name;
+        """
+        # Use the synchronous connector for schema changes/view creation
+        db_connector.run_query(create_query, return_df=False)
+        print("✅ Materialized view metadata.fact_activity_status created or already exists.")
+
+        if refresh:
+            refresh_query = "REFRESH MATERIALIZED VIEW CONCURRENTLY metadata.fact_activity_status;"
+            db_connector.run_query(refresh_query, return_df=False)
+            print("✅ Materialized view metadata.fact_activity_status refreshed successfully.")
+
+            # Create indices for faster querying
+            db_connector.run_query("CREATE UNIQUE INDEX IF NOT EXISTS idx_fact_activity_status_fact_name ON metadata.fact_activity_status (fact_name);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_fact_activity_status_last_filed ON metadata.fact_activity_status (last_filed_date);", return_df=False)
+            db_connector.run_query("CREATE INDEX IF NOT EXISTS idx_fact_activity_status_status ON metadata.fact_activity_status (activity_status);", return_df=False)
+            print("✅ Indices on metadata.fact_activity_status created successfully.")
+
 
 if __name__ == "__main__":
     view_manager = CreateViewManager()
     # Refresh all views
+    # Refresh all views in order
     view_manager.create_market_cap_view(refresh=True)
     view_manager.create_debt_to_equity_view(refresh=True)
     view_manager.create_current_ratio_view(refresh=True)
     view_manager.create_pe_ratio_view(refresh=True)
+    view_manager.create_fact_activity_view(refresh=True)
