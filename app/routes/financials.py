@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 from typing import List, Optional
 
 import pandas as pd
@@ -7,7 +8,8 @@ from starlette import status
 
 from app.cache import get_symbol_id, get_date_id, get_date_from_id, get_symbol_from_id
 from app.helpers.security import verify_api_key
-from app.models.financials import FactQueryResponse, CompanyFactBase
+# Import the new model and date type
+from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams
 from app.models.user import User
 from database.async_database import db_connector
 
@@ -18,12 +20,54 @@ router = APIRouter(
     dependencies=[Depends(verify_api_key)] # Apply API key verification to all routes in this router
 )
 
+# --- Dependency for Common Financial Parameters ---
+async def get_common_financial_params(
+    symbol: str = Path(..., title="Stock Symbol", description="The ticker symbol (e.g., AAPL)", min_length=1, max_length=10),
+    start_date_str: Optional[str] = Query(None, alias="startDate", description="Start date filter (YYYY-MM-DD)", regex=r"^\d{4}-\d{2}-\d{2}$"),
+    end_date_str: Optional[str] = Query(None, alias="endDate", description="End date filter (YYYY-MM-DD)", regex=r"^\d{4}-\d{2}-\d{2}$"),
+) -> CommonFinancialsParams:
+    """
+    Dependency to handle common symbol and date parameters, including validation and cache lookups.
+    """
+    symbol_upper = symbol.upper()
+    symbol_id = get_symbol_id(symbol_upper)
+    if symbol_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Symbol '{symbol_upper}' not found.")
+
+    start_date_obj: Optional[date] = None
+    start_date_id: Optional[int] = None
+    if start_date_str:
+        start_date_id = get_date_id(start_date_str)
+        if start_date_id is None:
+             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Start date '{start_date_str}' not found or invalid format (YYYY-MM-DD).")
+        start_date_obj = get_date_from_id(start_date_id) # Get date object for the model
+
+    end_date_obj: Optional[date] = None
+    end_date_id: Optional[int] = None
+    if end_date_str:
+        end_date_id = get_date_id(end_date_str)
+        if end_date_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"End date '{end_date_str}' not found or invalid format (YYYY-MM-DD).")
+        end_date_obj = get_date_from_id(end_date_id) # Get date object for the model
+
+    # Optional: Add validation for start_date <= end_date if both are provided
+    if start_date_obj and end_date_obj and start_date_obj > end_date_obj:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Start date cannot be after end date.")
+
+    return CommonFinancialsParams(
+        symbol=symbol_upper,
+        start_date=start_date_obj,
+        end_date=end_date_obj,
+        symbol_id=symbol_id,
+        start_date_id=start_date_id,
+        end_date_id=end_date_id
+    )
+
+
 @router.get("/facts/{symbol}/{fact_name}", response_model=FactQueryResponse)
 async def get_company_facts(
-    symbol: str = Path(..., title="Stock Symbol", description="The ticker symbol (e.g., AAPL)", min_length=1, max_length=10),
     fact_name: str = Path(..., title="Fact Name", description="The specific financial fact name (e.g., Revenues)", min_length=1),
-    start_date: Optional[str] = Query(None, description="Start date filter (YYYY-MM-DD)", regex=r"^\d{4}-\d{2}-\d{2}$"),
-    end_date: Optional[str] = Query(None, description="End date filter (YYYY-MM-DD)", regex=r"^\d{4}-\d{2}-\d{2}$"),
+    common_params: CommonFinancialsParams = Depends(get_common_financial_params), # Inject common params
     current_user: User = Depends(verify_api_key) # Get user info if needed, already verified
 ):
     """
@@ -31,17 +75,15 @@ async def get_company_facts(
     for a given stock symbol, optionally filtered by date range (based on `end_date_id`).
     Requires a valid API key via the 'X-API-Key' header.
     """
+    # Use values from the dependency
+    symbol = common_params.symbol
+    symbol_id = common_params.symbol_id
+    start_date_id = common_params.start_date_id
+    end_date_id = common_params.end_date_id
+
     logger.info(f"User {current_user.username} requested facts for {symbol}, fact: {fact_name}")
 
-    # Resolve symbol and dates using cache
-    symbol_id = get_symbol_id(symbol)
-    if symbol_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Symbol '{symbol}' not found.")
-
-    start_date_id = get_date_id(start_date) if start_date else None
-    end_date_id = get_date_id(end_date) if end_date else None
-
-    # Build the query dynamically based on filters
+    # Build the query dynamically based on filters using resolved IDs
     query_params = [symbol_id, fact_name]
     query = """
         SELECT fact_name, unit, start_date_id, end_date_id, filed_date_id,
@@ -70,7 +112,8 @@ async def get_company_facts(
             logger.warning(f"No facts found for symbol_id {symbol_id} and fact_name {fact_name} with given filters.")
             # Return empty list instead of 404 if symbol/fact exists but no data for filters
             # raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No facts found for the given criteria.")
-            return FactQueryResponse(symbol=symbol, fact_name=fact_name, data=[])
+            # Use symbol from common_params
+            return FactQueryResponse(symbol=common_params.symbol, fact_name=fact_name, data=[])
 
 
         # Process results, converting date_ids back to dates using cache
@@ -100,7 +143,8 @@ async def get_company_facts(
             )
             processed_data.append(fact_data)
 
-        return FactQueryResponse(symbol=symbol, fact_name=fact_name, data=processed_data)
+        # Use symbol from common_params
+        return FactQueryResponse(symbol=common_params.symbol, fact_name=fact_name, data=processed_data)
 
     except Exception as e:
         logger.error(f"Error fetching facts for {symbol}/{fact_name}: {e}", exc_info=True)
