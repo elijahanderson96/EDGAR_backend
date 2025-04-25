@@ -45,6 +45,18 @@ class RevenueFact(BaseModel):
 class SymbolMetadataResponse(BaseModel):
     """Response model for symbol metadata endpoint."""
     symbol: str
-    available_facts: List[str]
+    available_facts: List['FactMetadata'] # Change to list of detailed fact metadata
+    # min_date and max_date for the overall symbol can be removed or kept for summary
+    # Let's keep them for now as an overall summary alongside the detailed list.
+    overall_min_date: Optional[date] = None
+    overall_max_date: Optional[date] = None
+
+class FactMetadata(BaseModel):
+    """Detailed metadata for a specific fact."""
+    fact_name: str
+    count: int
     min_date: Optional[date] = None
     max_date: Optional[date] = None
+
+# Update the forward reference if using older Pydantic versions or for clarity
+# SymbolMetadataResponse.update_forward_refs()

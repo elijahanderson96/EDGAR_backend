@@ -10,7 +10,7 @@ from starlette import status
 from app.cache import get_symbol_id, get_date_id, get_date_from_id
 from app.helpers import users as user_helpers
 # Import the new model and date type
-from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams, SymbolMetadataResponse # Add SymbolMetadataResponse
+from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams, SymbolMetadataResponse, FactMetadata # Add FactMetadata
 from app.models.user import User
 from database.async_database import db_connector
 
@@ -237,41 +237,64 @@ async def get_symbol_metadata(
     if symbol_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Symbol '{symbol_upper}' not found.")
 
-    # Query to get distinct facts and min/max date IDs for the symbol
+    # Query to get count, min/max date IDs for each fact_name associated with the symbol
     query = """
         SELECT
-            array_agg(DISTINCT fact_name ORDER BY fact_name) AS available_facts,
+            fact_name,
+            COUNT(*) AS fact_count,
             MIN(end_date_id) AS min_date_id,
             MAX(end_date_id) AS max_date_id
         FROM financials.company_facts
-        WHERE symbol_id = $1;
+        WHERE symbol_id = $1
+        GROUP BY fact_name
+        ORDER BY fact_name;
     """
     query_params = [symbol_id]
 
     try:
-        # Fetch a single row containing the aggregated results
-        result = await db_connector.run_query(query, params=query_params, return_df=False, fetch_one=True)
+        # Fetch multiple rows (one per fact_name)
+        # Use return_df=False to get list of records directly
+        results = await db_connector.run_query(query, params=query_params, return_df=False, fetch_one=False)
 
-        if result is None or result['available_facts'] is None:
+        if not results:
             # Handle case where symbol exists but has no facts in the table
             logger.warning(f"No facts found in company_facts for symbol_id {symbol_id} ({symbol_upper}).")
-            return SymbolMetadataResponse(symbol=symbol_upper, available_facts=[], min_date=None, max_date=None)
+            # Return empty list for available_facts
+            return SymbolMetadataResponse(symbol=symbol_upper, available_facts=[], overall_min_date=None, overall_max_date=None)
 
-        # Convert date IDs to dates using cache
-        min_date_id = result['min_date_id']
-        max_date_id = result['max_date_id']
+        detailed_facts = []
+        overall_min_dt: Optional[date] = None
+        overall_max_dt: Optional[date] = None
 
-        min_dt = get_date_from_id(min_date_id) if min_date_id is not None else None
-        max_dt = get_date_from_id(max_date_id) if max_date_id is not None else None
+        for record in results:
+            fact_name = record['fact_name']
+            fact_count = record['fact_count']
+            min_date_id = record['min_date_id']
+            max_date_id = record['max_date_id']
 
-        # Ensure available_facts is a list (it should be from array_agg)
-        available_facts = list(result['available_facts']) if result['available_facts'] else []
+            # Convert date IDs to dates using cache
+            min_dt = get_date_from_id(min_date_id) if min_date_id is not None else None
+            max_dt = get_date_from_id(max_date_id) if max_date_id is not None else None
+
+            detailed_facts.append(FactMetadata(
+                fact_name=fact_name,
+                count=fact_count,
+                min_date=min_dt,
+                max_date=max_dt
+            ))
+
+            # Update overall min/max dates
+            if min_dt:
+                overall_min_dt = min(overall_min_dt, min_dt) if overall_min_dt else min_dt
+            if max_dt:
+                overall_max_dt = max(overall_max_dt, max_dt) if overall_max_dt else max_dt
+
 
         return SymbolMetadataResponse(
             symbol=symbol_upper,
-            available_facts=available_facts,
-            min_date=min_dt,
-            max_date=max_dt
+            available_facts=detailed_facts,
+            overall_min_date=overall_min_dt,
+            overall_max_date=overall_max_dt
         )
 
     except Exception as e:
