@@ -41,3 +41,10 @@ class RevenueFact(BaseModel):
     filed_date: date
     value: float
     unit: str
+
+class SymbolMetadataResponse(BaseModel):
+    """Response model for symbol metadata endpoint."""
+    symbol: str
+    available_facts: List[str]
+    min_date: Optional[date] = None
+    max_date: Optional[date] = None

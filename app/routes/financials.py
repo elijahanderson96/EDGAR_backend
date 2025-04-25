@@ -217,5 +217,66 @@ async def get_company_facts(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="Error retrieving financial data.")
 
+
+@router.get("/metadata/{symbol}", response_model=SymbolMetadataResponse)
+async def get_symbol_metadata(
+    symbol: str = Path(..., title="Stock Symbol", description="The ticker symbol (e.g., AAPL)", min_length=1, max_length=10),
+    current_user: User = Depends(verify_api_key) # Ensure user is authenticated via API key
+):
+    """
+    Retrieves metadata for a given stock symbol, including available fact names
+    and the overall date range (min/max end_date) of available data in the company_facts table.
+    Requires a valid API key via the 'X-API-Key' header.
+    """
+    symbol_upper = symbol.upper()
+    logger.info(f"User {current_user.username} requested metadata for symbol: {symbol_upper}")
+
+    # Resolve symbol using cache
+    symbol_id = get_symbol_id(symbol_upper)
+    if symbol_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Symbol '{symbol_upper}' not found.")
+
+    # Query to get distinct facts and min/max date IDs for the symbol
+    query = """
+        SELECT
+            array_agg(DISTINCT fact_name ORDER BY fact_name) AS available_facts,
+            MIN(end_date_id) AS min_date_id,
+            MAX(end_date_id) AS max_date_id
+        FROM financials.company_facts
+        WHERE symbol_id = $1;
+    """
+    query_params = [symbol_id]
+
+    try:
+        # Fetch a single row containing the aggregated results
+        result = await db_connector.run_query(query, params=query_params, return_df=False, fetch_one=True)
+
+        if result is None or result['available_facts'] is None:
+            # Handle case where symbol exists but has no facts in the table
+            logger.warning(f"No facts found in company_facts for symbol_id {symbol_id} ({symbol_upper}).")
+            return SymbolMetadataResponse(symbol=symbol_upper, available_facts=[], min_date=None, max_date=None)
+
+        # Convert date IDs to dates using cache
+        min_date_id = result['min_date_id']
+        max_date_id = result['max_date_id']
+
+        min_dt = get_date_from_id(min_date_id) if min_date_id is not None else None
+        max_dt = get_date_from_id(max_date_id) if max_date_id is not None else None
+
+        # Ensure available_facts is a list (it should be from array_agg)
+        available_facts = list(result['available_facts']) if result['available_facts'] else []
+
+        return SymbolMetadataResponse(
+            symbol=symbol_upper,
+            available_facts=available_facts,
+            min_date=min_dt,
+            max_date=max_dt
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching metadata for {symbol_upper}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error retrieving symbol metadata.")
+
+
 # Add more routes here later, e.g., for specific facts like /revenue, /assets, etc.
 # Or a more generic search endpoint.
