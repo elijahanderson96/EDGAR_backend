@@ -153,42 +153,49 @@ async def get_company_facts(
     query += " ORDER BY end_date_id DESC;"  # Order by date descending
 
     try:
-        print(query)
-        print(query_params)
-        results = await db_connector.run_query(query, params=query_params)
-        if results.empty:
+        # Explicitly state return_df=True (default) for clarity
+        results_df = await db_connector.run_query(query, params=query_params, return_df=True)
+
+        # Check if the DataFrame is empty
+        if results_df is None or results_df.empty:
             logger.warning(f"No facts found for symbol_id {symbol_id} and fact_name {fact_name} with given filters.")
             # Return empty list instead of 404 if symbol/fact exists but no data for filters
             # raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No facts found for the given criteria.")
             # Use symbol from common_params
             return FactQueryResponse(symbol=common_params.symbol, fact_name=fact_name, data=[])
 
-        # Process results, converting date_ids back to dates using cache
+        # Process results from the DataFrame, converting date_ids back to dates using cache
         processed_data = []
-        for record_dict in (dict(record) for record in results):  # Convert records to dicts
-            start_dt = get_date_from_id(record_dict.get('start_date_id'))
-            end_dt = get_date_from_id(record_dict.get('end_date_id'))
-            filed_dt = get_date_from_id(record_dict.get('filed_date_id'))
+        # Iterate through DataFrame rows
+        for index, row in results_df.iterrows():
+            start_dt = get_date_from_id(row.get('start_date_id'))
+            end_dt = get_date_from_id(row.get('end_date_id'))
+            filed_dt = get_date_from_id(row.get('filed_date_id'))
 
             # Handle cases where date_id might not be in cache (should be rare if cache is complete)
+            # Check for pd.NA or None if IDs might be missing in DB
             if start_dt is None or end_dt is None or filed_dt is None:
-                logger.warning(f"Could not resolve date IDs for record: {record_dict}. Skipping.")
+                logger.warning(f"Could not resolve date IDs for row: {row.to_dict()}. Skipping.")
                 continue
 
             # Create the Pydantic model instance for the response item
-            fact_data = CompanyFactBase(
-                fact_name=record_dict['fact_name'],
-                unit=record_dict['unit'],
-                start_date=start_dt,
-                end_date=end_dt,
-                filed_date=filed_dt,
-                fiscal_year=record_dict['fiscal_year'],
-                fiscal_period=record_dict['fiscal_period'],
-                form=record_dict['form'],
-                value=record_dict['value'],  # Ensure type matches model (float)
-                accn=record_dict['accn']
-            )
-            processed_data.append(fact_data)
+            try:
+                fact_data = CompanyFactBase(
+                    fact_name=row['fact_name'],
+                    unit=row['unit'],
+                    start_date=start_dt,
+                    end_date=end_dt,
+                    filed_date=filed_dt,
+                    fiscal_year=int(row['fiscal_year']), # Ensure correct type
+                    fiscal_period=row['fiscal_period'],
+                    form=row['form'],
+                    value=float(row['value']), # Ensure correct type (float)
+                    accn=row['accn']
+                )
+                processed_data.append(fact_data)
+            except Exception as model_exc:
+                logger.error(f"Error creating CompanyFactBase model for row {row.to_dict()}: {model_exc}", exc_info=True)
+                # Decide whether to skip the row or raise an error
 
         # Use symbol from common_params
         return FactQueryResponse(symbol=common_params.symbol, fact_name=fact_name, data=processed_data)
