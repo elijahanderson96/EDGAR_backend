@@ -9,8 +9,8 @@ from starlette import status
 
 from app.cache import get_symbol_id, get_date_id, get_date_from_id
 from app.helpers import users as user_helpers
-# Import the new model and date type
-from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams, SymbolMetadataResponse, FactMetadata # Add FactMetadata
+from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams, SymbolMetadataResponse, \
+    FactMetadata
 from app.models.user import User
 from database.async_database import db_connector
 
@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/financials",
     tags=["Financial Data"],
-    # dependencies=[Depends(verify_api_key)] # Dependency will be defined below
 )
 
 # --- API Key Verification Dependency (Moved Here) ---
@@ -166,9 +165,7 @@ async def get_company_facts(
             # Use symbol from common_params
             return FactQueryResponse(symbol=common_params.symbol, fact_name=fact_name, data=[])
 
-        # Process results from the DataFrame, converting date_ids back to dates using cache
         processed_data = []
-        # Iterate through DataFrame rows
         for index, row in results_df.iterrows():
             # Handle potentially missing start_date_id for point-in-time facts
             start_date_id = row.get('start_date_id')
@@ -180,15 +177,16 @@ async def get_company_facts(
 
             # Check if required date IDs exist and can be resolved
             if pd.isna(end_date_id) or pd.isna(filed_date_id):
-                 logger.warning(f"Missing required end_date_id or filed_date_id for row: {row.to_dict()}. Skipping.")
-                 continue
+                logger.warning(f"Missing required end_date_id or filed_date_id for row: {row.to_dict()}. Skipping.")
+                continue
 
             end_dt = get_date_from_id(end_date_id)
             filed_dt = get_date_from_id(filed_date_id)
 
             # Skip row only if required dates (end_dt, filed_dt) couldn't be resolved
             if end_dt is None or filed_dt is None:
-                logger.warning(f"Could not resolve required end_date_id ({end_date_id}) or filed_date_id ({filed_date_id}) for row: {row.to_dict()}. Skipping.")
+                logger.warning(
+                    f"Could not resolve required end_date_id ({end_date_id}) or filed_date_id ({filed_date_id}) for row: {row.to_dict()}. Skipping.")
                 continue
 
             # Create the Pydantic model instance for the response item
@@ -199,18 +197,17 @@ async def get_company_facts(
                     start_date=start_dt,
                     end_date=end_dt,
                     filed_date=filed_dt,
-                    fiscal_year=int(row['fiscal_year']), # Ensure correct type
+                    fiscal_year=int(row['fiscal_year']),  # Ensure correct type
                     fiscal_period=row['fiscal_period'],
                     form=row['form'],
-                    value=float(row['value']), # Ensure correct type (float)
+                    value=float(row['value']),  # Ensure correct type (float)
                     accn=row['accn']
                 )
                 processed_data.append(fact_data)
             except Exception as model_exc:
-                logger.error(f"Error creating CompanyFactBase model for row {row.to_dict()}: {model_exc}", exc_info=True)
-                # Decide whether to skip the row or raise an error
+                logger.error(f"Error creating CompanyFactBase model for row {row.to_dict()}: {model_exc}",
+                             exc_info=True)
 
-        # Use symbol from common_params
         return FactQueryResponse(symbol=common_params.symbol, fact_name=fact_name, data=processed_data)
 
     except Exception as e:
@@ -221,8 +218,9 @@ async def get_company_facts(
 
 @router.get("/metadata/{symbol}", response_model=SymbolMetadataResponse)
 async def get_symbol_metadata(
-    symbol: str = Path(..., title="Stock Symbol", description="The ticker symbol (e.g., AAPL)", min_length=1, max_length=10),
-    current_user: User = Depends(verify_api_key) # Ensure user is authenticated via API key
+        symbol: str = Path(..., title="Stock Symbol", description="The ticker symbol (e.g., AAPL)", min_length=1,
+                           max_length=10),
+        current_user: User = Depends(verify_api_key)  # Ensure user is authenticated via API key
 ):
     """
     Retrieves metadata for a given stock symbol, including available fact names
@@ -260,7 +258,8 @@ async def get_symbol_metadata(
             # Handle case where symbol exists but has no facts in the table
             logger.warning(f"No facts found in company_facts for symbol_id {symbol_id} ({symbol_upper}).")
             # Return empty list for available_facts
-            return SymbolMetadataResponse(symbol=symbol_upper, available_facts=[], overall_min_date=None, overall_max_date=None)
+            return SymbolMetadataResponse(symbol=symbol_upper, available_facts=[], overall_min_date=None,
+                                          overall_max_date=None)
 
         detailed_facts = []
         overall_min_dt: Optional[date] = None
@@ -280,7 +279,7 @@ async def get_symbol_metadata(
 
             detailed_facts.append(FactMetadata(
                 fact_name=fact_name,
-                count=int(fact_count), # Ensure count is int
+                count=int(fact_count),  # Ensure count is int
                 min_date=min_dt,
                 max_date=max_dt
             ))
@@ -291,7 +290,6 @@ async def get_symbol_metadata(
             if max_dt:
                 overall_max_dt = max(overall_max_dt, max_dt) if overall_max_dt else max_dt
 
-
         return SymbolMetadataResponse(
             symbol=symbol_upper,
             available_facts=detailed_facts,
@@ -301,8 +299,8 @@ async def get_symbol_metadata(
 
     except Exception as e:
         logger.error(f"Error fetching metadata for {symbol_upper}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error retrieving symbol metadata.")
-
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Error retrieving symbol metadata.")
 
 # Add more routes here later, e.g., for specific facts like /revenue, /assets, etc.
 # Or a more generic search endpoint.

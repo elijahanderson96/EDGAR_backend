@@ -9,7 +9,7 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     username: Optional[str] = None
     user_id: Optional[int] = None
-    scopes: list[str] = []
+    scopes: list[str] = None
 
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
