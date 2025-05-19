@@ -1,18 +1,11 @@
-import os
+import logging
 import time
-from datetime import datetime
-from logging.handlers import RotatingFileHandler
 
 import requests
-import io
-import asyncio
-import logging
-
 import pandas as pd
-from tqdm.asyncio import tqdm
-from database.async_database import db_connector
+from tqdm import tqdm
+
 from database.database import db_connector as normal_connector
-from helpers.email_utils import send_log_email
 
 
 class SubmissionsMetadata:
@@ -30,9 +23,6 @@ class SubmissionsMetadata:
             cik (str): Central Index Key (CIK) for the company.
         """
         self.cik = cik.zfill(10)  # Pad CIK to 10 digits
-        # XBRL data is the only data within our company facts table. Therefore, if we create a list
-        # of unique accession numbers from the submission endpoints, we can reference a list of
-        # unique accn numbers within our database and see what data we're missing.
         self.xbrl_accns = None
 
     def get_filings(self):
@@ -49,13 +39,11 @@ class SubmissionsMetadata:
 
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
-                    print(retry_after)
                     if retry_after:
                         wait_time = int(retry_after)
                     else:
-                        wait_time = 2 ** attempt  # Default exponential backoff if header not provided
+                        wait_time = 2 ** attempt  # Default exponential backoff
 
-                    logging.warning(f"Rate limit reached. Retrying in {wait_time} seconds...")
                     time.sleep(wait_time)
                     continue  # Retry after waiting
 
@@ -64,12 +52,9 @@ class SubmissionsMetadata:
                 return self._process_data(data)
 
             except requests.RequestException as e:
-                logging.error(f"Error fetching data (attempt {attempt + 1}): {e}")
                 if attempt == max_retries - 1:
-                    raise
-
-        logging.error("Max retries reached. Failed to fetch data.")
-        return None
+                    raise  # Raise the last exception if all retries fail
+        return None  # Should only be reached if max_retries is 0 or loop is bypassed
 
     def _process_data(self, data):
         """
@@ -81,11 +66,15 @@ class SubmissionsMetadata:
         filings = data.get("filings", {}).get("recent", {})
 
         if not filings:
-            # logging.warning("No filings found in the response.")
-            return
+            return None  # Return None if no filings
 
-        xbrl_indices = [i for i, v in enumerate(filings['isXBRL']) if v]
-        self.xbrl_accns = [filings['accessionNumber'][i] for i in xbrl_indices]
+        xbrl_indices = [i for i, v in enumerate(filings.get('isXBRL', [])) if v]
+        if not xbrl_indices:  # Ensure 'accessionNumber' exists and has items for xbrl_indices
+            self.xbrl_accns = []
+            return self.xbrl_accns
+
+        all_accns = filings.get('accessionNumber', [])
+        self.xbrl_accns = [all_accns[i] for i in xbrl_indices if i < len(all_accns)]
         return self.xbrl_accns
 
 
@@ -95,14 +84,18 @@ class DatabaseData:
         self.accns = accns
         self.data = None
 
-    async def cross_reference_accns(self) -> set:
+    def cross_reference_accns(self) -> set:
         q = f'''SELECT cf.accn as accn FROM financials.company_facts cf
                 LEFT JOIN metadata.symbols s ON s.symbol_id = cf.symbol_id
-                WHERE s.cik=$1'''
+                WHERE s.cik=%s'''
+        query_result = normal_connector.run_query(q, params=[self.cik])
 
-        self.data = await db_connector.run_query(q, params=[self.cik])
-
-        return set(self.data['accn'])
+        if isinstance(query_result, pd.DataFrame):
+            self.data = query_result
+            return set(self.data['accn'])
+        elif isinstance(query_result, list) and query_result and isinstance(query_result[0], dict):  # list of dicts
+            return set(row['accn'] for row in query_result)
+        return set()
 
 
 class DataRefresher:
@@ -114,7 +107,7 @@ class DataRefresher:
 
     def __init__(self, cik: str):
         """
-        Initialize the CompanyFacts object with a given CIK.
+        Initialize the DataRefresher object with a given CIK.
 
         Args:
             cik (str): Central Index Key (CIK) for the company.
@@ -139,24 +132,20 @@ class DataRefresher:
                     if retry_after:
                         wait_time = int(retry_after)
                     else:
-                        wait_time = 2 ** attempt  # Default exponential backoff if header not provided
+                        wait_time = 2 ** attempt
 
-                    logging.warning(f"Rate limit reached. Retrying in {wait_time} seconds...")
                     time.sleep(wait_time)
-                    continue  # Retry after waiting
+                    continue
 
                 response.raise_for_status()
                 self.data = response.json()
                 return  # Successfully fetched data
 
             except requests.RequestException as e:
-                logging.error(f"Error fetching data (attempt {attempt + 1}): {e}")
                 if attempt == max_retries - 1:
-                    self.data = None
+                    self.data = None  # Ensure data is None on final failure
                     raise
-
-        logging.error("Max retries reached. Failed to fetch data.")
-        self.data = None
+        self.data = None  # Should only be reached if max_retries is 0
 
     def get_facts_by_accns(self, accns: set):
         """
@@ -171,25 +160,21 @@ class DataRefresher:
         self.fetch_facts()
 
         if not self.data:
-            # logging.error("Failed to load data. Cannot process facts.")
             return {}
 
         filtered_facts = {}
-
-        # Iterate over the facts to filter by accns
         for taxonomy, concepts in self.data.get("facts", {}).items():
             for concept_name, concept_data in concepts.items():
                 units = concept_data.get("units", {})
                 for unit, instances in units.items():
                     for instance in instances:
-                        if instance.get("accn") in accns:  # Match against the set of accns
+                        if instance.get("accn") in accns:
                             if concept_name not in filtered_facts:
                                 filtered_facts[concept_name] = {
                                     "label": concept_data.get("label"),
                                     "description": concept_data.get("description"),
                                     "instances": []
                                 }
-                            # Append the instance data
                             filtered_facts[concept_name]["instances"].append({
                                 "unit": unit,
                                 "fy": instance.get("fy"),
@@ -201,11 +186,10 @@ class DataRefresher:
                                 "filed": instance.get("filed"),
                                 "accn": instance.get("accn"),
                             })
-
         return filtered_facts
 
     def format_facts_to_dataframe(self, facts: dict) -> pd.DataFrame:
-        """Format the facts into a DataFrame similar to process_json_files_optimized."""
+        """Format the facts into a DataFrame."""
         records = []
         for concept_name, concept_data in facts.items():
             for instance in concept_data["instances"]:
@@ -223,12 +207,18 @@ class DataRefresher:
                 }
                 records.append(record)
 
+        if not records:
+            return pd.DataFrame()  # Return empty DataFrame if no records
+
         df = pd.DataFrame(records)
         df['cik'] = self.cik
         return self.transform_dataframe(df)
 
     def transform_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """Transform the DataFrame with required merging and cleaning logic."""
+        if df.empty:
+            return df
+
         symbols_df = normal_connector.run_query("SELECT symbol_id, cik FROM metadata.symbols", return_df=True)
         dates_df = normal_connector.run_query("SELECT date_id, date FROM metadata.dates", return_df=True)
 
@@ -241,175 +231,164 @@ class DataRefresher:
         df['end_date'] = pd.to_datetime(df['end_date'], errors='coerce')
         df['filed'] = pd.to_datetime(df['filed'], errors='coerce')
 
-        symbols_df['cik'] = symbols_df['cik'].astype(str)
+        symbols_df['cik'] = symbols_df['cik'].astype(str).str.zfill(10)  # Ensure CIK format matches for merge
+        df['cik'] = df['cik'].astype(str).str.zfill(10)
+
         dates_df['date'] = pd.to_datetime(dates_df['date'])
 
         df_merged_symbols = df.merge(symbols_df, on='cik', how='left')
 
         df_merged_start_date = df_merged_symbols.merge(
-            dates_df.rename(columns={'date': 'start_date'}), on='start_date', how='left'
-        ).rename(columns={'date_id': 'start_date_id'})
+            dates_df.rename(columns={'date': 'start_date_dt', 'date_id': 'start_date_id'}),
+            left_on='start_date', right_on='start_date_dt', how='left'
+        ).drop(columns=['start_date_dt'], errors='ignore')
 
         df_merged_end_date = df_merged_start_date.merge(
-            dates_df.rename(columns={'date': 'end_date'}), on='end_date', how='left'
-        ).rename(columns={'date_id': 'end_date_id'})
+            dates_df.rename(columns={'date': 'end_date_dt', 'date_id': 'end_date_id'}),
+            left_on='end_date', right_on='end_date_dt', how='left'
+        ).drop(columns=['end_date_dt'], errors='ignore')
 
         df_merged_filed_date = df_merged_end_date.merge(
-            dates_df.rename(columns={'date': 'filed'}), on='filed', how='left'
-        ).rename(columns={'date_id': 'filed_date_id'})
+            dates_df.rename(columns={'date': 'filed_dt', 'date_id': 'filed_date_id'}),
+            left_on='filed', right_on='filed_dt', how='left'
+        ).drop(columns=['filed_dt'], errors='ignore')
 
-        df = df_merged_filed_date.rename(columns={
-            'fy': 'fiscal_year',
-            'fp': 'fiscal_period',
-            'form': 'form',
-            'val': 'value',
-            'accn': 'accn'
-        })
+        df = df_merged_filed_date  # Already renamed in the merge lines
 
-        df = df[['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id',
-                 'fiscal_year', 'fiscal_period', 'form', 'value', 'accn']]
+        # Select and rename columns as per the original script's intent
+        # The original script renamed columns after merging, this version renames during merge for clarity
+        # Ensure fiscal_year, fiscal_period, form, value, accn are present or map them if names differ
+        # Original df had: fiscal_year, fiscal_period, value, form, accn from records
 
-        # Drop rows where symbol_id is missing
+        final_columns = ['symbol_id', 'fact_name', 'unit', 'start_date_id', 'end_date_id', 'filed_date_id',
+                         'fiscal_year', 'fiscal_period', 'form', 'value', 'accn']
+
+        # Ensure all target columns exist, add if missing (e.g. if original df didn't have them)
+        for col in final_columns:
+            if col not in df.columns:
+                df[col] = None
+
+        df = df[final_columns]
+
         df = df.dropna(subset=['symbol_id'])
+        if df.empty:
+            return df
 
-        # Explicitly cast integer columns to nullable integers, keeping NaN as None
         int_columns = ['symbol_id', 'start_date_id', 'end_date_id', 'filed_date_id', 'fiscal_year']
         for col in int_columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')  # Nullable integer type
+            df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')
 
-        # Replace NaN with None for all nullable fields
         df = df.replace({pd.NA: None})
         return df
 
-    async def insert_dataframe_to_db(self, df: pd.DataFrame):
-        """Insert a DataFrame into the database using copy_to_table."""
-        # Replace NaN with None for database compatibility
+    def insert_dataframe_to_db(self, df: pd.DataFrame):
+        """Insert a DataFrame into the database."""
+        if df.empty:
+            return
+        if isinstance(df, pd.DataFrame):
+            normal_connector.insert_dataframe(df, name='company_facts', schema='financials', if_exists='append')
+        return
 
-        # Create a BytesIO stream for binary output
-        output = io.BytesIO()
-        # Write DataFrame to CSV format
-        df.to_csv(output, sep='\t', index=False, header=False, na_rep=None, encoding='utf-8')  # Empty strings for NULL
-        output.seek(0)  # Reset the stream position
-
-        async with db_connector.pool.acquire() as connection:
-            try:
-                # logging.info("Starting data insertion using copy_to_table...")
-                await connection.copy_to_table(
-                    'company_facts',
-                    schema_name='financials',
-                    source=output,
-                    format='csv',
-                    delimiter='\t',
-                    columns=df.columns.tolist()
-                )
-                logging.info(f"Successfully inserted {len(df)} records.")
-            except Exception as e:
-                logging.error(f"Error during copy_to_table operation: {e}")
-                raise
-
-
-async def get_all_ciks():
+def get_all_ciks():
     query = """
         SELECT cik, symbol
         FROM metadata.symbols
         ORDER BY cik
     """
-    ciks_df = await db_connector.run_query(query, return_df=True)
+    # Ensure CIKs are read as strings and padded if necessary for consistency
+    ciks_df = normal_connector.run_query(query, return_df=True)
+    if ciks_df.empty:
+        return []
+    ciks_df['cik'] = ciks_df['cik'].astype(str).str.zfill(10)
     return list(zip(ciks_df['cik'], ciks_df['symbol']))
 
 
-async def process_cik(cik, symbol):
+def process_cik(cik, symbol):
     """Process data for a single CIK."""
     try:
-        # Fetch filings metadata
         metadata = SubmissionsMetadata(cik)
-        xbrl_filings = set(metadata.get_filings())
-        if not xbrl_filings:
-            # logging.warning(f"No XBRL filings found for CIK {cik}, Symbol: {symbol}")
-            return cik, 0, 0, None
+        xbrl_filings_list = metadata.get_filings()
 
-        # Cross-reference ACCNs with database
-        db_data_analyzer = DatabaseData(cik, xbrl_filings)
-        db_data = await db_data_analyzer.cross_reference_accns()
+        if not xbrl_filings_list:  # Handles None or empty list
+            return cik, 0, 0, 0  # CIK, total_xbrl, db_found, inserted_count
 
-        missing_accns = xbrl_filings - db_data
+        xbrl_filings_set = set(xbrl_filings_list)
+
+        db_data_analyzer = DatabaseData(cik, xbrl_filings_set)
+        db_accns_set = db_data_analyzer.cross_reference_accns()
+
+        missing_accns = xbrl_filings_set - db_accns_set
 
         if not missing_accns:
-            # logging.info(f"No missing ACCNs for CIK {cik}, Symbol: {symbol}")
-            return cik, len(xbrl_filings), len(db_data), None
+            return cik, len(xbrl_filings_set), len(db_accns_set), 0
 
-        # Fetch and format data
-        data_getter = DataRefresher(cik)
-        data = data_getter.get_facts_by_accns(missing_accns)
+        data_refresher = DataRefresher(cik)
+        new_facts_data = data_refresher.get_facts_by_accns(missing_accns)
 
-        if data:
-            formatted_data = data_getter.format_facts_to_dataframe(data)
-            await data_getter.insert_dataframe_to_db(formatted_data)
-        # else:
+        inserted_count = 0
+        if new_facts_data:
+            formatted_df = data_refresher.format_facts_to_dataframe(new_facts_data)
+            if not formatted_df.empty:
+                data_refresher.insert_dataframe_to_db(formatted_df)
+                inserted_count = len(formatted_df)
 
-        # logging.info(f"No new data found for CIK {cik}, Symbol: {symbol}")
-
-        return cik, len(xbrl_filings), len(db_data), data
+        return cik, len(xbrl_filings_set), len(db_accns_set), inserted_count
 
     except Exception as e:
-        # logging.error(f"Error processing CIK {cik}, Symbol: {symbol}: {e}")
-        return cik, 0, 0, None
+        # Optionally, logger.info or handle the error for this CIK without full logging
+        # logger.info(f"Error processing CIK {cik}, Symbol: {symbol}: {e}")
+        return cik, 0, 0, 0  # Indicate failure or no data processed for this CIK
 
 
-async def main():
+def main(logger):
     """Main function to process all CIKs."""
-    await db_connector.initialize()
+    if hasattr(normal_connector, 'initialize'):
+        normal_connector.initialize()
+
+    processed_count = 0
+    total_inserted_records = 0
 
     try:
-        cik_symbol_pairs = await get_all_ciks()  # List of (cik, symbol)
-        results = []
+        cik_symbol_pairs = get_all_ciks()
+
+        if not cik_symbol_pairs:
+            logger.info("No CIKs found to process.")
+            return
 
         for cik, symbol in tqdm(cik_symbol_pairs, desc="Processing CIKs"):
-            result = await process_cik(cik, symbol)
-            results.append(result)
+            try:
+                logger.info("Processing Symbol: {}, CIK: {}".format(symbol,cik))
+                _, _, _, inserted = process_cik(cik, symbol)
+                if inserted > 0:
+                    logger.info('Inserted {} records for {}'.format(inserted, cik))
+                    processed_count += 1
+                    total_inserted_records += inserted
+            except Exception as e:
+                # Minimal error reporting for a specific CIK if needed, otherwise it's silent
+                logger.info(f"Unhandled error for CIK {cik} ({symbol}): {e}")
 
-        # Log summary of processing
-        successful = sum(1 for _, _, _, data in results if data)
-        logging.info(f"Processing completed. Inserted data for: {successful}/{len(cik_symbol_pairs)}")
+        logger.info(f"Processing completed. Inserted data for {processed_count}/{len(cik_symbol_pairs)} CIKs.")
+        logger.info(f"Total records inserted: {total_inserted_records}")
 
     except Exception as e:
-        logging.error(f"Error in main: {e}")
+        # Minimal error reporting for main process error
+        logger.info(f"An error occurred in the main process: {e}")
 
     finally:
-        await db_connector.close()
-
-
-def setup_logging():
-    todays_date = datetime.now().strftime("%m-%d-%Y")
-    log_dir = os.path.join("./logs", todays_date)
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, "execution.log")
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=2),
-            logging.StreamHandler()
-        ]
-    )
-    return log_file
-
-
-# Wrapper Function
-def execute_with_logging():
-    log_file = setup_logging()
-    recipient_email = os.getenv("LOG_RECIPIENT_EMAIL", "elijahanderson96@gmail.com")
-    try:
-        logging.info("Script execution started.")
-        asyncio.run(main())
-        logging.info("Script executed successfully.")
-        send_log_email(log_file, recipient_email)
-    except Exception as e:
-        logging.error(f"Script execution failed: {e}")
-        send_log_email(log_file, recipient_email)  # Still send logs in case of failure
-        raise
+        if hasattr(normal_connector, 'close'):
+            normal_connector.close()
 
 
 if __name__ == "__main__":
-    execute_with_logging()
+    # Get the root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    # Basic formatter
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+    # Console Handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+    main(root_logger)

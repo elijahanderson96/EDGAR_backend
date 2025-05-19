@@ -171,6 +171,29 @@ db.run_query('''CREATE INDEX idx_company_facts_fact_name ON financials.company_f
 db.run_query('''CREATE INDEX idx_company_facts_symbol_id_fact_name ON financials.company_facts (symbol_id, fact_name);
 ''', return_df=False)
 
+db.run_query(create_table_query, return_df=False)
+
+columns = """
+            id SERIAL PRIMARY KEY,
+            symbol_id INT REFERENCES metadata.symbols(symbol_id),
+            fact_name VARCHAR(255),
+            unit VARCHAR(31),
+            start_date_id INT REFERENCES metadata.dates(date_id),
+            end_date_id INT REFERENCES metadata.dates(date_id),
+            filed_date_id INT REFERENCES metadata.dates(date_id),
+            value NUMERIC,
+            qoq_growth NUMERIC(5,3),
+            yoy_growth NUMERIC(5,3)
+        """
+create_table_query = f"CREATE TABLE IF NOT EXISTS financials.quarterly_facts ({columns});"
+db.run_query(create_table_query, return_df=False)
+
+db.run_query('''CREATE INDEX idx_quarterly_facts_fact_name ON financials.quarterly_facts (fact_name);''', return_df=False)
+
+db.run_query('''CREATE INDEX idx_quarterly_facts_symbol_id_fact_name ON financials.quarterly_facts (symbol_id, fact_name);''', return_df=False)
+
+
+
 db.run_query("""
 
 DO $$

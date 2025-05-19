@@ -124,47 +124,42 @@ def send_validation_email(dataframes, recipient_email, image_paths=None):
         server.quit()
 
 
-def send_log_email(log_file_path, recipient_email):
-    smtp_server = os.getenv("SMTP_SERVER")
-    smtp_port = int(os.getenv("SMTP_PORT"))
-    smtp_username = os.getenv("SMTP_USERNAME")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-    sender_email = os.getenv("SENDER_EMAIL")
-    todays_date = datetime.now().strftime("%m-%d-%Y")
+# In helpers/email_utils.py
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
+import os
 
-    # Check if the log file exists
-    if not os.path.exists(log_file_path):
-        logging.error(f"Log file not found: {log_file_path}")
-        return
 
-    # Create email message
-    message = MIMEMultipart()
-    message["From"] = sender_email
-    message["To"] = recipient_email
-    message["Subject"] = f"Daily log files for {todays_date} are attached"
+def send_log_email(subject, body_text, recipient_email, attachment_content=None, attachment_filename="job.log"):
+    sender_email = os.getenv("SENDER_EMAIL", "noreply@example.com")
+    sender_password = os.getenv("SMTP_PASSWORD")
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.example.com")
+    smtp_port = int(os.getenv("SMTP_PORT", 587))
 
-    # Email body
-    message.attach(MIMEText(f"Daily log files for {todays_date} are attached.", "plain"))
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = recipient_email
+    msg['Subject'] = subject
 
-    # Attach the log file
-    with open(log_file_path, "rb") as log_file:
-        part = MIMEBase("application", "octet-stream")
-        part.set_payload(log_file.read())
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(log_file_path)}")
-        message.attach(part)
+    msg.attach(MIMEText(body_text, 'plain'))
+
+    if attachment_content:
+        part = MIMEApplication(attachment_content.encode('utf-8'), Name=attachment_filename)  # Encode to bytes
+        part['Content-Disposition'] = f'attachment; filename="{attachment_filename}"'
+        msg.attach(part)
 
     try:
-        # Create a secure TLS connection
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(smtp_username, smtp_password)
-        server.sendmail(sender_email, recipient_email, message.as_string())
-        logging.info(f"Log email sent to {recipient_email}")
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, recipient_email, msg.as_string())
+        logging.info(f"Email '{subject}' sent successfully to {recipient_email}")
     except Exception as e:
-        logging.error(f"Error sending email: {str(e)}")
-    finally:
-        server.quit()
+        logging.error(f"Failed to send email '{subject}' to {recipient_email}: {e}")
+        # Re-raise if you want the job wrapper to know about email failure explicitly
+        # raise
 
 # Example usage
 # send_log_email("/path/to/your_log.log", "elijahanderson96@gmail.com")
