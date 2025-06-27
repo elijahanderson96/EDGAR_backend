@@ -1,6 +1,5 @@
 import pandas as pd
 import requests
-from database.database import db_connector
 
 
 def resolve_cik_to_symbol_mapping():

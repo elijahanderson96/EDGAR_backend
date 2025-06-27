@@ -1,13 +1,11 @@
 import pandas as pd
 from database.async_database import db_connector
-import asyncio
 
 
 class FactFrequencyAnalyzer:
     def __init__(self):
         self.db_connector = db_connector
-
-    fact_names = set()
+        self.fact_names = set()
 
     async def fetch_distinct_fact_names(self) -> set:
         """
@@ -50,6 +48,7 @@ class FactFrequencyAnalyzer:
             GROUP BY symbol_id
         )
         SELECT s.symbol,
+               d.date AS end_date,
                CASE WHEN rs.symbol_id IS NOT NULL THEN 'Reported' ELSE 'Not Reported' END AS reporting_status,
                COALESCE((rs.fact_count * 100.0 / tf.total_count), 0) AS filing_percentage
         FROM metadata.symbols s
@@ -59,59 +58,107 @@ class FactFrequencyAnalyzer:
         """
         return await self.db_connector.run_query(query, params=[fact_name], return_df=True)
 
-    async def analyze_fact_frequency(self) -> pd.DataFrame:
+    async def calculate_market_cap(self) -> pd.DataFrame:
         """
-        Analyze the frequency of each fact name being reported across all symbols.
-
-        Returns:
-        - pd.DataFrame: DataFrame with fact names and their reporting frequency percentage.
         """
         query = """
-        WITH total_filed_dates AS (
-            SELECT COUNT(DISTINCT filed_date_id) AS total_filed_dates
-            FROM financials.company_facts
-        ),
-        total_symbols AS (
-            SELECT COUNT(DISTINCT symbol_id) AS total_symbols
-            FROM financials.company_facts
+        CREATE OR REPLACE MATERIALIZED VIEW financials.market_caps AS
+        WITH max_date_cf AS (
+            SELECT
+                cf.symbol_id,
+                MAX(cf.filed_date_id) AS latest_filed_date_id,
+                (
+                    SELECT cf_inner.value
+                    FROM financials.company_facts cf_inner
+                    WHERE cf_inner.symbol_id = cf.symbol_id
+                    AND cf_inner.end_date_id = MAX(cf.end_date_id)
+                    AND cf_inner.fact_name IN ('EntityCommonStockSharesOutstanding', 'CommonStockSharesOutstanding')
+                    LIMIT 1
+                ) AS shares_outstanding
+            FROM financials.company_facts cf
+            WHERE cf.fact_name IN ('EntityCommonStockSharesOutstanding', 'CommonStockSharesOutstanding')
+            GROUP BY cf.symbol_id
         )
-        SELECT fact_name,
-               (COUNT(DISTINCT filed_date_id) * 100.0 / (SELECT total_filed_dates FROM total_filed_dates)) AS filing_percentage,
-               (COUNT(DISTINCT symbol_id) * 100.0 / (SELECT total_symbols FROM total_symbols)) AS symbol_percentage
+        SELECT
+            d.date,
+            s.symbol,
+            (mcf.shares_outstanding * hd.close) AS market_cap,
+            mcf.shares_outstanding AS shares,
+            hd.close AS price
+        FROM max_date_cf mcf
+        JOIN financials.historical_data hd ON mcf.symbol_id = hd.symbol_id
+        JOIN metadata.dates d ON d.date_id = hd.date_id
+        JOIN metadata.symbols s ON mcf.symbol_id = s.symbol_id
+        ORDER BY s.symbol, d.date;
+        """
+        return await self.db_connector.run_query(query, return_df=False)
+
+    async def most_common_facts(self, top_n: int = 50) -> pd.DataFrame:
+        """
+        Identify the most commonly reported fact names within the company facts table.
+
+        Parameters:
+        - top_n (int): The number of top fact names to return.
+
+        Returns:
+        - pd.DataFrame: DataFrame with the most common fact names and their counts.
+        """
+        query = f"""
+        SELECT fact_name, COUNT(*) as count
         FROM financials.company_facts
         GROUP BY fact_name
-        ORDER BY filing_percentage DESC, symbol_percentage DESC;
+        ORDER BY count DESC
+        LIMIT $1;
         """
-        return await self.run_query(query, return_df=True)
+        return await self.db_connector.run_query(query, params=[top_n], return_df=True)
 
-    async def get_common_stock_shares_outstanding(self) -> pd.DataFrame:
+    async def cash_flow_analysis(self, cash_flow_type: str = "operating") -> pd.DataFrame:
         """
-        Retrieve the most recent value of 'EntityCommonStockSharesOutstanding' for each symbol.
+        Analyze the cash flow to liabilities ratio for all companies based on the specified cash flow type.
+
+        Parameters:
+        - cash_flow_type (str): Type of cash flow to use. Options are "operating", "investing", "financing", or "total" (sums all three).
 
         Returns:
-        - pd.DataFrame: DataFrame with symbols, the fact name, its most recent value, filing date, and end date.
+        - pd.DataFrame: DataFrame with symbols, end dates, and cash flow to liabilities ratios.
         """
-        query = """
-        WITH latest_facts AS (
-            SELECT
-                symbol_id,
-                fact_name,
-                MAX(filed_date_id) AS latest_filed_date_id,
-                MAX(end_date_id) AS latest_end_date_id
+        cash_flow_mapping = {
+            "operating": "NetCashProvidedByUsedInOperatingActivities",
+            "investing": "NetCashProvidedByUsedInInvestingActivities",
+            "financing": "NetCashProvidedByUsedInFinancingActivities",
+        }
+        cash_flow_filter = "IN ('NetCashProvidedByUsedInOperatingActivities', 'NetCashProvidedByUsedInInvestingActivities', 'NetCashProvidedByUsedInFinancingActivities')" if cash_flow_type == "total" else f"= '{cash_flow_mapping[cash_flow_type]}'"
+
+        query = f"""
+        WITH latest_cash_flow AS (
+            SELECT symbol_id, end_date_id, 
+                   SUM(value) AS cash_flow,
+                   ROW_NUMBER() OVER (PARTITION BY symbol_id, end_date_id ORDER BY filed_date_id DESC, start_date_id DESC) AS rn
             FROM financials.company_facts
-            WHERE fact_name = 'EntityCommonStockSharesOutstanding'
-            GROUP BY symbol_id, fact_name
+            WHERE fact_name {cash_flow_filter}
+            GROUP BY symbol_id, end_date_id, filed_date_id, start_date_id
+        ),
+        latest_liabilities AS (
+            SELECT symbol_id, end_date_id, 
+                   value AS total_liabilities,
+                   ROW_NUMBER() OVER (PARTITION BY symbol_id, end_date_id ORDER BY filed_date_id DESC, start_date_id DESC) AS rn
+            FROM financials.company_facts
+            WHERE fact_name = 'Liabilities'
+              AND value > 0
         )
-        SELECT s.symbol, cf.fact_name, cf.value, d_filed.date AS filing_date, d_end.date AS end_date
-        FROM latest_facts lf
-        JOIN financials.company_facts cf
-            ON lf.symbol_id = cf.symbol_id
-            AND lf.fact_name = cf.fact_name
-            AND lf.latest_filed_date_id = cf.filed_date_id
-            AND lf.latest_end_date_id = cf.end_date_id
-        JOIN metadata.symbols s ON cf.symbol_id = s.symbol_id
-        JOIN metadata.dates d_filed ON cf.filed_date_id = d_filed.date_id
-        JOIN metadata.dates d_end ON cf.end_date_id = d_end.date_id
-        ORDER BY s.symbol;
+        SELECT s.symbol,
+               d.date AS end_date,
+               (cf.cash_flow / li.total_liabilities) AS cash_flow_to_liabilities_ratio
+        FROM latest_cash_flow cf
+        JOIN latest_liabilities li 
+            ON cf.symbol_id = li.symbol_id AND cf.end_date_id = li.end_date_id
+        JOIN metadata.symbols s 
+            ON cf.symbol_id = s.symbol_id
+        JOIN metadata.dates d 
+            ON cf.end_date_id = d.date_id
+        WHERE cf.rn = 1 AND li.rn = 1
+        ORDER BY cash_flow_to_liabilities_ratio DESC;
         """
         return await self.db_connector.run_query(query, return_df=True)
+
+

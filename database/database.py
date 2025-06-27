@@ -421,12 +421,15 @@ class PostgreSQLConnector:
             engine = create_engine(
                 f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.dbname}"
             )
-            dataframe.to_sql(**kwargs, con=engine, method=self.psql_insert_copy, index=False)
+
+            con = engine.connect()
+            dataframe.to_sql(**kwargs, con=con, method=self.psql_insert_copy, index=False)
             engine.dispose()  # close the engine
-            self.logger.info(f"Dataframe inserted into db successfully.")
+            # self.logger.info(f"Dataframe inserted into db successfully.")
         except Exception as e:
             self.logger.error("Error inserting dataframe: ", e)
             raise e
+
 
     @staticmethod
     def psql_insert_copy(table, conn, keys, data_iter):

@@ -1,65 +1,59 @@
-name: Deploy and Build
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:  # Allows manual triggering from the GitHub Actions tab
 
 jobs:
-  deploy:
-    name: Deploy to DigitalOcean Droplets
+  build-and-deploy:
     runs-on: ubuntu-latest
 
-    env:
-      DROPLET_1_IP: ${{ secrets.DROPLET_1_IP }}
-      DROPLET_2_IP: ${{ secrets.DROPLET_2_IP }}
-      SSH_USERNAME: root
-      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-      REPO_URL: https://github.com/elijahanderson96/EDGAR_backend.git
-
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v2
+      # Step 1: Checkout the repository
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-    - name: Verify sshpass is installed
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y sshpass
-        sshpass -V
+      # Step 2: Set up doctl using the DigitalOcean GitHub Action
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
-    - name: Create and verify destination directory on Droplet 1
-      run: |
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_1_IP '
-          mkdir -p /root/EDGAR_Backend
-          ls -la /root/EDGAR_Backend
-        '
+      - name: Set up Python environment
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.9"
 
-    - name: Pull latest code and build on Droplet 1
-      run: |
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_1_IP '
-          if [ -d "/root/EDGAR_Backend/.git" ]; then
-            cd /root/EDGAR_Backend && git pull
-          else
-            git clone $REPO_URL /root/EDGAR_Backend
-          fi
-          cd /root/EDGAR_Backend && docker-compose build
-        '
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install boto3
 
-    - name: Create and verify destination directory on Droplet 2
-      run: |
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_2_IP '
-          mkdir -p /root/EDGAR_Backend
-          ls -la /root/EDGAR_Backend
-        '
+      - name: Run script to pull credentials
+        env:
+          DIGITALOCEAN_SPACES_ID: ${{ secrets.DIGITAL_OCEAN_SPACES_ID }}
+          DIGITALOCEAN_SPACES_TOKEN: ${{ secrets.DIGITALOCEAN_SPACES_TOKEN }}
+        run: |
+          python pull_creds.py
 
-    - name: Pull latest code and build on Droplet 2
-      run: |
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$DROPLET_2_IP '
-          if [ -d "/root/EDGAR_Backend/.git" ]; then
-            cd /root/EDGAR_Backend && git pull
-          else
-            git clone $REPO_URL /root/EDGAR_Backend
-          fi
-          cd /root/EDGAR_Backend && docker-compose build
-        '
+      - name: Build container image
+        run: docker build -t ${{ secrets.REGISTRY_NAME }}/backend_service:$(echo $GITHUB_SHA | head -c7) .
+
+      - name: Log in to DigitalOcean Container Registry with short-lived credentials
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Push image to DigitalOcean Container Registry
+        run: docker push ${{ secrets.REGISTRY_NAME }}/backend_service:$(echo $GITHUB_SHA | head -c7)
+
+      - name: Update deployment file
+        run: TAG=$(echo $GITHUB_SHA | head -c7) && sed -i 's|<IMAGE>|${{ secrets.REGISTRY_NAME }}/backend_service:'${TAG}'|' $GITHUB_WORKSPACE/config/deployment.yml
+
+      - name: Save DigitalOcean kubeconfig with short-lived credentials
+        run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 ${{ secrets.CLUSTER_NAME }}
+
+      - name: Deploy to DigitalOcean Kubernetes
+        run: kubectl apply -f $GITHUB_WORKSPACE/config/deployment.yml
+
+      - name: Verify deployment
+        run: kubectl rollout status deployment/bagels-backend-service

@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 from typing import Any, Dict, List, Optional, Union
 import logging
@@ -41,21 +40,31 @@ class AsyncpgConnector:
         """
         Execute a query on the database.
         """
+        # Ensure pool is initialized before acquiring connection
+        if not self.pool:
+            self.logger.error("Connection pool is not initialized.")
+            # Depending on desired behavior, either raise an error or try to initialize
+            # For now, raise an error to make the issue explicit
+            raise RuntimeError("Database connection pool has not been initialized.")
+
         async with self.pool.acquire() as connection:
             try:
                 if fetch_one:
-                    result = await connection.fetchrow(query, *params) if params else await connection.fetch(query)
-                    return result[0] if result else None
+                    # fetchrow returns a single Record or None
+                    result = await connection.fetchrow(query, *params) if params else await connection.fetchrow(query)
+                    # Return the record directly (acts like a dict) or None
+                    return result
                 else:
+                    # fetch returns a list of Records
                     result = await connection.fetch(query, *params) if params else await connection.fetch(query)
                     if return_df:
                         data = [dict(record) for record in result]
                         return pd.DataFrame(data)
-                    return None
+                    # Return the list of asyncpg.Record objects if return_df is False
+                    return result
             except Exception as e:
                 self.logger.error(f"Error occurred while executing query: {e}")
                 raise e
-
 
     async def drop_existing_rows(
             self,
