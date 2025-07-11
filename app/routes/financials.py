@@ -3,15 +3,14 @@ from datetime import date
 from typing import Optional
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
-from fastapi.security import APIKeyHeader
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from starlette import status
 
-from app.cache import get_symbol_id, get_date_id, get_date_from_id
-from app.helpers import users as user_helpers
-from app.models.financials import FactQueryResponse, CompanyFactBase, CommonFinancialsParams, SymbolMetadataResponse, \
-    FactMetadata
+from app.cache import get_date_from_id, get_date_id, get_symbol_id
+from app.models.financials import CommonFinancialsParams, CompanyFactBase, FactMetadata, FactQueryResponse, \
+    SymbolMetadataResponse
 from app.models.user import User
+from app.routes.auth import verify_api_key
 from database.async_database import db_connector
 
 logger = logging.getLogger(__name__)
@@ -20,45 +19,6 @@ router = APIRouter(
     tags=["Financial Data"],
 )
 
-# --- API Key Verification Dependency (Moved Here) ---
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)  # Set auto_error=False for custom handling
-
-
-async def verify_api_key(api_key: str = Depends(api_key_header)) -> User:
-    """
-    Dependency to verify the API key provided in the 'X-API-Key' header.
-    Returns the authenticated user or raises HTTPException 401/403.
-    Moved here to break circular import.
-    """
-    if not api_key:
-        logger.warning("API Key missing from request header 'X-API-Key'")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API Key missing",
-        )
-
-    user = await user_helpers.get_user_by_api_key(api_key)
-    if user is None:
-        logger.warning(f"Invalid API Key received: {api_key[:4]}...{api_key[-4:]}")  # Log partial key for debugging
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API Key",
-        )
-
-    # Optionally, check if the user associated with the API key is active/verified
-    if not user.is_authenticated:
-        logger.warning(f"API Key belongs to unverified user: {user.username} (ID: {user.id})")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account associated with this API key is not verified.",
-        )
-
-    logger.info(f"API Key verified for user: {user.username} (ID: {user.id})")
-    # Return the user object (Pydantic model)
-    return User.model_validate(user)
-
-
-# Apply the dependency to the router *after* defining it
 router.dependencies.append(Depends(verify_api_key))
 
 
@@ -301,6 +261,3 @@ async def get_symbol_metadata(
         logger.error(f"Error fetching metadata for {symbol_upper}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="Error retrieving symbol metadata.")
-
-# Add more routes here later, e.g., for specific facts like /revenue, /assets, etc.
-# Or a more generic search endpoint.

@@ -1,19 +1,55 @@
 import logging
+from typing import Type
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Response
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
+from fastapi.security import APIKeyHeader, OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 
-from app.helpers import security
-from app.helpers import users as user_helpers
-from app.models.auth import Token, UserCreate, PasswordResetRequest, PasswordResetConfirm, UserLogin
+from app.helpers import security, users as user_helpers
+from app.models.auth import PasswordResetConfirm, PasswordResetRequest, Token, UserCreate, UserLogin
 from app.models.user import User
-from helpers.email_utils import send_authentication_email, is_valid_email
+from helpers.email_utils import is_valid_email, send_authentication_email
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)  # Set auto_error=False for custom handling
+
+
+async def verify_api_key(api_key: str = Depends(api_key_header)) -> User:
+    """
+    Dependency to verify the API key provided in the 'X-API-Key' header.
+    Returns the authenticated user or raises HTTPException 401/403.
+    Moved here to break circular import.
+    """
+    if not api_key:
+        logger.warning("API Key missing from request header 'X-API-Key'")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API Key missing",
+        )
+
+    user = await user_helpers.get_user_by_api_key(api_key)
+    if user is None:
+        logger.warning(f"Invalid API Key received: {api_key[:4]}...{api_key[-4:]}")  # Log partial key for debugging
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API Key",
+        )
+
+    # Optionally, check if the user associated with the API key is active/verified
+    if not user.is_authenticated:
+        logger.warning(f"API Key belongs to unverified user: {user.username} (ID: {user.id})")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account associated with this API key is not verified.",
+        )
+
+    logger.info(f"API Key verified for user: {user.username} (ID: {user.id})")
+    # Return the user object (Pydantic model)
+    return User.model_validate(user)
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
@@ -21,11 +57,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
     Dependency to verify the access token and return the current user.
     Raises HTTPException 401 if token is invalid, expired, or user not found/verified.
     """
-    payload = security.verify_token(token, expected_type="access") # verify_token returns payload with string 'sub'
-    user_id_str: str = payload.get("sub") # Get 'sub' as string
+    payload = security.verify_token(token, expected_type="access")  # verify_token returns payload with string 'sub'
+    user_id_str: str = payload.get("sub")  # Get 'sub' as string
 
     try:
-        user_id = int(user_id_str) # Convert 'sub' string to integer
+        user_id = int(user_id_str)  # Convert 'sub' string to integer
     except (ValueError, TypeError):
         logger.error(f"Invalid user ID format in token payload: {user_id_str}")
         raise HTTPException(
@@ -103,13 +139,13 @@ async def verify_email(token: str):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Invalid or expired verification token") from e
 
-    user_id_str = payload.get("sub") # Get 'sub' as string
+    user_id_str = payload.get("sub")  # Get 'sub' as string
 
     try:
-        user_id = int(user_id_str) # Convert 'sub' string to integer
+        user_id = int(user_id_str)  # Convert 'sub' string to integer
     except (ValueError, TypeError):
-         logger.error(f"Invalid user ID format in verification token payload: {user_id_str}")
-         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user identifier in token")
+        logger.error(f"Invalid user ID format in verification token payload: {user_id_str}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user identifier in token")
 
     user = await user_helpers.get_user_by_id(user_id)
     if not user:
@@ -220,10 +256,10 @@ async def refresh_access_token(response: Response, request: Request):
         response.delete_cookie("refresh_token")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token") from e
 
-    user_id_str = payload.get("sub") # Get 'sub' as string
+    user_id_str = payload.get("sub")  # Get 'sub' as string
 
     try:
-        user_id = int(user_id_str) # Convert 'sub' string to integer
+        user_id = int(user_id_str)  # Convert 'sub' string to integer
     except (ValueError, TypeError):
         logger.error(f"Invalid user ID format in refresh token payload: {user_id_str}")
         # Clear cookies as the token is invalid
@@ -288,13 +324,13 @@ async def logout(response: Response, request: Request):
             payload = jwt.decode(refresh_token, security.SECRET_KEY, algorithms=[security.ALGORITHM],
                                  options={"verify_exp": False})
             if payload.get("type") == "refresh":
-                user_id_str = payload.get("sub") # Get 'sub' as string
+                user_id_str = payload.get("sub")  # Get 'sub' as string
                 try:
                     # Convert to int only if it's a valid string representation of an int
                     user_id = int(user_id_str) if user_id_str else None
                 except (ValueError, TypeError):
                     logger.warning(f"Invalid user ID format '{user_id_str}' in refresh token during logout.")
-                    user_id = None # Treat invalid format as missing ID
+                    user_id = None  # Treat invalid format as missing ID
         except JWTError as e:
             logger.warning(f"Error decoding refresh token during logout: {e}")
             # Proceed to clear cookies even if token is malformed
@@ -358,14 +394,13 @@ async def reset_password(reset_data: PasswordResetConfirm):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Invalid or expired password reset token") from e
 
-    user_id_str = payload.get("sub") # Get 'sub' as string
+    user_id_str = payload.get("sub")  # Get 'sub' as string
 
     try:
-        user_id = int(user_id_str) # Convert 'sub' string to integer
+        user_id = int(user_id_str)  # Convert 'sub' string to integer
     except (ValueError, TypeError):
         logger.error(f"Invalid user ID format in password reset token payload: {user_id_str}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user identifier in token")
-
 
     # Update password and invalidate refresh token
     success = await user_helpers.update_user_password(user_id, reset_data.new_password)

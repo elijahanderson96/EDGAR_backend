@@ -16,7 +16,6 @@ from database.async_database import db_connector
 # Import cache loading functions
 from app.cache import load_symbols_cache, load_dates_cache
 
-
 # --- Logging Configuration ---
 # Ensure the log directory exists
 os.makedirs(APP_LOGS, exist_ok=True)
@@ -135,12 +134,12 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 # --- API Routers ---
 # Import routers
-from app.routes import auth, financials
+from app.routes import auth, financials, options, docs
 
-# Include the authentication router
 app.include_router(auth.router)
-# Include the financials router
 app.include_router(financials.router)
+app.include_router(options.router)
+app.include_router(docs.router)
 
 
 # Add other routers here as your application grows

@@ -1,14 +1,15 @@
 import logging
-import uuid # Import uuid library
+import uuid  # Import uuid library
 from typing import Optional, Dict, Any
 from datetime import date
 
-from database.async_database import db_connector # Use the async connector
+from database.async_database import db_connector  # Use the async connector
 from app.models.user import UserInDB, User
-from app.models.auth import UserCreate # Import UserCreate from auth model
+from app.models.auth import UserCreate  # Import UserCreate from auth model
 from app.helpers.security import get_password_hash
 
 logger = logging.getLogger(__name__)
+
 
 async def _map_record_to_user_in_db(user_record: Optional[Dict]) -> Optional[UserInDB]:
     """Helper function to map a database record (dict) to UserInDB model."""
@@ -38,6 +39,7 @@ async def get_user_by_email(email: str) -> Optional[UserInDB]:
         logger.error(f"Error fetching user by email {email}: {e}")
         return None
 
+
 async def get_user_by_username(username: str) -> Optional[UserInDB]:
     """Fetches a user by username."""
     query = "SELECT * FROM users.users WHERE username = $1"
@@ -47,6 +49,7 @@ async def get_user_by_username(username: str) -> Optional[UserInDB]:
     except Exception as e:
         logger.error(f"Error fetching user by username {username}: {e}")
         return None
+
 
 async def get_user_by_id(user_id: int) -> Optional[UserInDB]:
     """Fetches a user by ID."""
@@ -58,6 +61,7 @@ async def get_user_by_id(user_id: int) -> Optional[UserInDB]:
         logger.error(f"Error fetching user by id {user_id}: {e}")
         return None
 
+
 async def get_user_by_api_key(api_key: str) -> Optional[UserInDB]:
     """Fetches a user by API key."""
     query = "SELECT * FROM users.users WHERE api_key = $1"
@@ -68,9 +72,11 @@ async def get_user_by_api_key(api_key: str) -> Optional[UserInDB]:
         logger.error(f"Error fetching user by api_key {api_key}: {e}")
         return None
 
+
 def generate_api_key() -> str:
     """Generates a unique API key."""
     return str(uuid.uuid4())
+
 
 async def create_user(user: UserCreate) -> Optional[UserInDB]:
     """Creates a new user in the database with a unique API key."""
@@ -87,10 +93,11 @@ async def create_user(user: UserCreate) -> Optional[UserInDB]:
         # Ensure run_query with RETURNING works correctly with fetch_one=True
         new_user_record = await db_connector.run_query(query, params=params, return_df=False, fetch_one=True)
         return await _map_record_to_user_in_db(new_user_record)
-    except Exception as e: # Catch potential unique constraint violations etc.
+    except Exception as e:  # Catch potential unique constraint violations etc.
         logger.error(f"Error creating user {user.username} ({user.email}): {e}")
         # Consider checking for specific DB errors like unique violation (e.g., asyncpg.exceptions.UniqueViolationError)
         return None
+
 
 async def update_user_field(user_id: int, field: str, value: Any) -> bool:
     """Updates a specific field for a user. Returns True on success, False otherwise."""
@@ -110,19 +117,23 @@ async def update_user_field(user_id: int, field: str, value: Any) -> bool:
             logger.info(f"Successfully updated {field} for user ID {user_id}")
             return True
         else:
-            logger.warning(f"Update for {field} did not affect user ID {user_id} (user might not exist or value unchanged)")
-            return False # Or True if no change is not an error state
+            logger.warning(
+                f"Update for {field} did not affect user ID {user_id} (user might not exist or value unchanged)")
+            return False  # Or True if no change is not an error state
     except Exception as e:
         logger.error(f"Error updating {field} for user ID {user_id}: {e}")
         return False
+
 
 async def set_user_authenticated(user_id: int) -> bool:
     """Sets the user's is_authenticated flag to True."""
     return await update_user_field(user_id, 'is_authenticated', True)
 
+
 async def update_user_last_login(user_id: int) -> bool:
     """Updates the user's last_logged_in timestamp."""
     return await update_user_field(user_id, 'last_logged_in', date.today())
+
 
 async def update_user_password(user_id: int, new_password: str) -> bool:
     """Updates the user's password hash and clears the auth_token."""
@@ -132,7 +143,8 @@ async def update_user_password(user_id: int, new_password: str) -> bool:
         async with connection.transaction():
             try:
                 # Update password
-                await connection.execute("UPDATE users.users SET password_hash = $1 WHERE id = $2", new_password_hash, user_id)
+                await connection.execute("UPDATE users.users SET password_hash = $1 WHERE id = $2", new_password_hash,
+                                         user_id)
                 # Clear auth token
                 await connection.execute("UPDATE users.users SET auth_token = NULL WHERE id = $2", user_id)
                 logger.info(f"Successfully updated password and cleared auth_token for user ID {user_id}")
@@ -150,7 +162,8 @@ async def store_refresh_token(user_id: int, refresh_token: str) -> bool:
     # hashed_token = get_password_hash(refresh_token) # Example if hashing
     # return await update_user_field(user_id, 'auth_token', hashed_token)
     logger.warning(f"Storing raw refresh token for user ID {user_id}. THIS IS INSECURE for production.")
-    return await update_user_field(user_id, 'auth_token', refresh_token) # Storing raw token
+    return await update_user_field(user_id, 'auth_token', refresh_token)  # Storing raw token
+
 
 async def verify_refresh_token(user_id: int, provided_token: str) -> bool:
     """Verifies a provided refresh token against the stored one."""
@@ -165,6 +178,7 @@ async def verify_refresh_token(user_id: int, provided_token: str) -> bool:
     if not is_valid:
         logger.warning(f"Invalid refresh token provided for user ID {user_id}.")
     return is_valid
+
 
 async def invalidate_refresh_token(user_id: int) -> bool:
     """Clears the stored refresh token for the user (e.g., on logout or password change)."""
