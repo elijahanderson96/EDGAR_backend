@@ -4,7 +4,7 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
 import yfinance as yf
 
-from app.models.options import CollarAnalysisRequest, ExpirationRequest, TickerRequest
+from app.models.options import CollarAnalysisRequest, ExpirationRequest, LongOptionAnalysisRequest, TickerRequest
 from app.models.user import User
 from app.routes.auth import get_current_user
 
@@ -139,6 +139,100 @@ async def analyze_collar(request: CollarAnalysisRequest, current_user: User = De
             "pct_changes": pct_changes.tolist(),
             "collar_values": collar_values,
             "returns": returns
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/analyze-long-put")
+async def analyze_long_put(request: LongOptionAnalysisRequest, current_user: User = Depends(get_current_user)):
+    try:
+        ticker = yf.Ticker(request.symbol)
+
+        # Get current price
+        hist = ticker.history(period="1d")
+        if hist.empty:
+            raise ValueError("No historical data available")
+        underlying_price = hist['Close'].iloc[-1]
+
+        # Get options chain
+        chain = ticker.option_chain(request.expiration)
+
+        # Find selected put
+        put = chain.puts[chain.puts['strike'] == request.strike]
+        if put.empty:
+            raise ValueError(f"No put found with strike {request.strike}")
+        premium = put['lastPrice'].iloc[0]
+
+        # Calculate days to expiration
+        exp_date = datetime.strptime(request.expiration, '%Y-%m-%d')
+        days_to_exp = (exp_date - datetime.now()).days
+
+        # Create price range
+        price_range = np.linspace(underlying_price * 0.5, underlying_price * 1.5, 101)
+        pct_changes = (price_range - underlying_price) / underlying_price * 100
+
+        # Calculate profits
+        profits = [max(0, request.strike - price) - premium for price in price_range]
+
+        # Calculate key metrics
+        break_even = request.strike - premium
+        max_profit = request.strike - premium  # When stock goes to 0
+        max_loss = -premium
+
+        return {
+            "underlying_price": underlying_price,
+            "premium": premium,
+            "days_to_exp": days_to_exp,
+            "break_even": break_even,
+            "max_profit": max_profit,
+            "max_loss": max_loss,
+            "price_range": price_range.tolist(),
+            "pct_changes": pct_changes.tolist(),
+            "profits": profits
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/analyze-long-call")
+async def analyze_long_call(request: LongOptionAnalysisRequest, current_user: User = Depends(get_current_user)):
+    try:
+        ticker = yf.Ticker(request.symbol)
+        hist = ticker.history(period="1d")
+        underlying_price = hist['Close'].iloc[-1]
+
+        chain = ticker.option_chain(request.expiration)
+
+        # Find selected call
+        call = chain.calls[chain.calls['strike'] == request.strike]
+        if call.empty:
+            raise ValueError(f"No call found with strike {request.strike}")
+        premium = call['lastPrice'].iloc[0]
+
+        exp_date = datetime.strptime(request.expiration, '%Y-%m-%d')
+        days_to_exp = (exp_date - datetime.now()).days
+
+        price_range = np.linspace(underlying_price * 0.5, underlying_price * 1.5, 101)
+        pct_changes = (price_range - underlying_price) / underlying_price * 100
+
+        # Calculate profits (unlimited upside)
+        profits = [max(0, price - request.strike) - premium for price in price_range]
+
+        # Calculate key metrics
+        break_even = request.strike + premium
+        max_loss = -premium
+
+        return {
+            "underlying_price": underlying_price,
+            "premium": premium,
+            "days_to_exp": days_to_exp,
+            "break_even": break_even,
+            "max_profit": None,  # Unlimited
+            "max_loss": max_loss,
+            "price_range": price_range.tolist(),
+            "pct_changes": pct_changes.tolist(),
+            "profits": profits
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

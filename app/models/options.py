@@ -15,3 +15,9 @@ class CollarAnalysisRequest(BaseModel):
     expiration: str
     put_strike: float
     call_strike: float
+
+
+class LongOptionAnalysisRequest(BaseModel):
+    symbol: str
+    expiration: str
+    strike: float
