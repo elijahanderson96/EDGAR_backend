@@ -12,7 +12,8 @@ class ExpirationRequest(BaseModel):
 
 class CollarAnalysisRequest(BaseModel):
     symbol: str
-    expiration: str
+    put_expiration: str
+    call_expiration: str
     put_strike: float
     call_strike: float
 
