@@ -74,30 +74,27 @@ async def analyze_collar(request: CollarAnalysisRequest, current_user: User = De
             raise ValueError("No historical data available")
         underlying_price = hist['Close'].iloc[-1]
 
-        # Get put option from put_expiration chain
-        put_chain = ticker.option_chain(request.put_expiration)
-        put = put_chain.puts[put_chain.puts['strike'] == request.put_strike]
+        # Get entire option chain for the single expiration
+        chain = ticker.option_chain(request.expiration)
+        
+        # Find selected put and call in the same chain
+        put = chain.puts[chain.puts['strike'] == request.put_strike]
         if put.empty:
-            raise ValueError(f"No put found with strike {request.put_strike} for expiration {request.put_expiration}")
+            raise ValueError(f"No put found with strike {request.put_strike} for expiration {request.expiration}")
         put_premium = put['lastPrice'].iloc[0]
 
-        # Get call option from call_expiration chain
-        call_chain = ticker.option_chain(request.call_expiration)
-        call = call_chain.calls[call_chain.calls['strike'] == request.call_strike]
+        call = chain.calls[chain.calls['strike'] == request.call_strike]
         if call.empty:
-            raise ValueError(
-                f"No call found with strike {request.call_strike} for expiration {request.call_expiration}")
+            raise ValueError(f"No call found with strike {request.call_strike} for expiration {request.expiration}")
         call_premium = call['lastPrice'].iloc[0]
 
         # Calculate net option flow
         net_option_flow = call_premium - put_premium
         cost_str = "credit" if net_option_flow > 0 else "debit"
 
-        # Calculate days to expiration for put and call separately
-        put_exp_date = datetime.strptime(request.put_expiration, '%Y-%m-%d')
-        put_days_to_exp = (put_exp_date - datetime.now()).days
-        call_exp_date = datetime.strptime(request.call_expiration, '%Y-%m-%d')
-        call_days_to_exp = (call_exp_date - datetime.now()).days
+        # Calculate days to expiration
+        exp_date = datetime.strptime(request.expiration, '%Y-%m-%d')
+        days_to_exp = (exp_date - datetime.now()).days
 
         # Calculate initial investment
         initial_investment = underlying_price - net_option_flow
@@ -129,8 +126,7 @@ async def analyze_collar(request: CollarAnalysisRequest, current_user: User = De
             "call_premium": call_premium,
             "net_option_flow": net_option_flow,
             "cost_str": cost_str,
-            "put_days_to_exp": put_days_to_exp,
-            "call_days_to_exp": call_days_to_exp,
+            "days_to_exp": days_to_exp,
             "initial_investment": initial_investment,
             "max_gain": max_gain,
             "max_loss": max_loss,
@@ -142,7 +138,6 @@ async def analyze_collar(request: CollarAnalysisRequest, current_user: User = De
             "collar_values": collar_values,
             "returns": returns}
 
-        print(rtn)
         return rtn
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
