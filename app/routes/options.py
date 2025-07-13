@@ -13,20 +13,20 @@ router = APIRouter(
 )
 
 
-@router.put("/get-expirations")
-async def get_expirations(request: ExpirationRequest, current_user: User = Depends(get_current_user)):
+@router.get("/get-expirations")
+async def get_expirations(symbol: str = Query(...), current_user: User = Depends(get_current_user)):
     try:
-        ticker = yf.Ticker(request.symbol)
+        ticker = yf.Ticker(symbol)
         expirations = ticker.options
         return {"expirations": expirations}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.put("/get-options")
-async def get_options(request: ExpirationRequest, current_user: User = Depends(get_current_user)):
+@router.get("/get-options")
+async def get_options(symbol: str = Query(...), expiration: str = Query(...), current_user: User = Depends(get_current_user)):
     try:
-        ticker = yf.Ticker(request.symbol)
+        ticker = yf.Ticker(symbol)
 
         # Get current price
         hist = ticker.history(period="1d")
@@ -37,7 +37,7 @@ async def get_options(request: ExpirationRequest, current_user: User = Depends(g
         underlying_price = hist['Close'].iloc[-1]
 
         # Get options
-        chain = ticker.option_chain(request.expiration)
+        chain = ticker.option_chain(expiration)
         puts = chain.puts
         calls = chain.calls
         print(puts)
