@@ -4,7 +4,7 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
 import yfinance as yf
 
-from app.models.options import CollarAnalysisRequest, ExpirationRequest, LongOptionAnalysisRequest, TickerRequest
+from app.models.options import CollarAnalysisRequest, ExpirationRequest, LongOptionAnalysisRequest
 from app.models.user import User
 from app.routes.auth import get_current_user
 
@@ -13,8 +13,8 @@ router = APIRouter(
 )
 
 
-@router.post("/get-expirations")
-async def get_expirations(request: TickerRequest, current_user: User = Depends(get_current_user)):
+@router.put("/get-expirations")
+async def get_expirations(request: ExpirationRequest, current_user: User = Depends(get_current_user)):
     try:
         ticker = yf.Ticker(request.symbol)
         expirations = ticker.options
@@ -23,39 +23,31 @@ async def get_expirations(request: TickerRequest, current_user: User = Depends(g
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/get-options")
+@router.put("/get-options")
 async def get_options(request: ExpirationRequest, current_user: User = Depends(get_current_user)):
     try:
         ticker = yf.Ticker(request.symbol)
 
         # Get current price
         hist = ticker.history(period="1d")
+
         if hist.empty:
             raise ValueError("No historical data available")
+
         underlying_price = hist['Close'].iloc[-1]
 
         # Get options
         chain = ticker.option_chain(request.expiration)
         puts = chain.puts
         calls = chain.calls
-
-        # Filter relevant options
-        relevant_puts = puts[
-            (puts['strike'] >= underlying_price * 0.8) &
-            (puts['strike'] <= underlying_price * 1.0)
-            ].sort_values('strike', ascending=False)
-
-        relevant_calls = calls[
-            (calls['strike'] >= underlying_price * 1.0) &
-            (calls['strike'] <= underlying_price * 1.2)
-            ].sort_values('strike')
-
+        print(puts)
+        print(calls)
         return {
             "underlying_price": underlying_price,
-            "puts": relevant_puts[
+            "puts": puts[
                 ['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']].to_dict(
                 orient='records'),
-            "calls": relevant_calls[
+            "calls": calls[
                 ['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']].to_dict(
                 orient='records')
         }
