@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 import yfinance as yf
 
 from app.models.options import CollarAnalysisRequest, ExpirationRequest, LongOptionAnalysisRequest
