@@ -40,8 +40,11 @@ async def get_options(symbol: str = Query(...), expiration: str = Query(...), cu
         chain = ticker.option_chain(expiration)
         puts = chain.puts
         calls = chain.calls
-        print(puts)
-        print(calls)
+
+        # Clean the DataFrames: replace non-finite values with None
+        puts = puts.replace([float('inf'), float('-inf')], float('nan')).fillna(None)
+        calls = calls.replace([float('inf'), float('-inf')], float('nan')).fillna(None)
+
         return {
             "underlying_price": underlying_price,
             "puts": puts[
