@@ -85,7 +85,8 @@ async def analyze_collar(request: CollarAnalysisRequest, current_user: User = De
         call_chain = ticker.option_chain(request.call_expiration)
         call = call_chain.calls[call_chain.calls['strike'] == request.call_strike]
         if call.empty:
-            raise ValueError(f"No call found with strike {request.call_strike} for expiration {request.call_expiration}")
+            raise ValueError(
+                f"No call found with strike {request.call_strike} for expiration {request.call_expiration}")
         call_premium = call['lastPrice'].iloc[0]
 
         # Calculate net option flow
@@ -122,8 +123,7 @@ async def analyze_collar(request: CollarAnalysisRequest, current_user: User = De
         break_even = underlying_price - net_option_flow
         max_return = (max_gain / initial_investment) * 100
         max_loss_pct = (max_loss / initial_investment) * 100
-
-        return {
+        rtn = {
             "underlying_price": underlying_price,
             "put_premium": put_premium,
             "call_premium": call_premium,
@@ -140,8 +140,10 @@ async def analyze_collar(request: CollarAnalysisRequest, current_user: User = De
             "price_range": price_range.tolist(),
             "pct_changes": pct_changes.tolist(),
             "collar_values": collar_values,
-            "returns": returns
-        }
+            "returns": returns}
+
+        print(rtn)
+        return rtn
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
