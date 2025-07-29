@@ -1,10 +1,11 @@
-from datetime import datetime
+import datetime
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Query
+import pandas as pd
 import yfinance as yf
+from fastapi import APIRouter, Depends, HTTPException, Query
+from scipy.stats import norm
 
-from app.models.options import CollarAnalysisRequest, ExpirationRequest, LongOptionAnalysisRequest
 from app.models.user import User
 from app.routes.auth import get_current_user
 
@@ -24,7 +25,8 @@ async def get_expirations(symbol: str = Query(...), current_user: User = Depends
 
 
 @router.get("/get-options")
-async def get_options(symbol: str = Query(...), expiration: str = Query(...), current_user: User = Depends(get_current_user)):
+async def get_options(symbol: str = Query(...), expiration: str = Query(...),
+                      current_user: User = Depends(get_current_user)):
     try:
         ticker = yf.Ticker(symbol)
 
@@ -41,11 +43,10 @@ async def get_options(symbol: str = Query(...), expiration: str = Query(...), cu
         puts = chain.puts
         calls = chain.calls
 
-        # Clean the DataFrames: replace non-finite values with None
-        puts = puts.replace([float('inf'), float('-inf')], float('nan')).fillna(None)
-        calls = calls.replace([float('inf'), float('-inf')], float('nan')).fillna(None)
+        puts = puts.fillna(0)
+        calls = calls.fillna(0)
 
-        return {
+        rtn = {
             "underlying_price": underlying_price,
             "puts": puts[
                 ['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']].to_dict(
@@ -54,179 +55,156 @@ async def get_options(symbol: str = Query(...), expiration: str = Query(...), cu
                 ['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']].to_dict(
                 orient='records')
         }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/analyze-collar")
-async def analyze_collar(request: CollarAnalysisRequest, current_user: User = Depends(get_current_user)):
-    try:
-        ticker = yf.Ticker(request.symbol)
-
-        # Get current price
-        hist = ticker.history(period="1d")
-        if hist.empty:
-            raise ValueError("No historical data available")
-        underlying_price = hist['Close'].iloc[-1]
-
-        # Get entire option chain for the single expiration
-        chain = ticker.option_chain(request.expiration)
-        
-        # Find selected put and call in the same chain
-        put = chain.puts[chain.puts['strike'] == request.put_strike]
-        if put.empty:
-            raise ValueError(f"No put found with strike {request.put_strike} for expiration {request.expiration}")
-        put_premium = put['lastPrice'].iloc[0]
-
-        call = chain.calls[chain.calls['strike'] == request.call_strike]
-        if call.empty:
-            raise ValueError(f"No call found with strike {request.call_strike} for expiration {request.expiration}")
-        call_premium = call['lastPrice'].iloc[0]
-
-        # Calculate net option flow
-        net_option_flow = call_premium - put_premium
-        cost_str = "credit" if net_option_flow > 0 else "debit"
-
-        # Calculate days to expiration
-        exp_date = datetime.strptime(request.expiration, '%Y-%m-%d')
-        days_to_exp = (exp_date - datetime.now()).days
-
-        # Calculate initial investment
-        initial_investment = underlying_price - net_option_flow
-
-        # Create price range
-        price_range = np.linspace(underlying_price * 0.5, underlying_price * 1.5, 101)
-        pct_changes = (price_range - underlying_price) / underlying_price * 100
-
-        # Calculate values
-        collar_values = []
-        returns = []
-
-        for price in price_range:
-            put_value = max(0, request.put_strike - price)
-            call_value = max(0, price - request.call_strike)
-            collar_value = price + put_value - call_value + net_option_flow
-            collar_values.append(collar_value)
-            returns.append((collar_value - initial_investment) / initial_investment * 100)
-
-        # Calculate key metrics
-        max_gain = request.call_strike - underlying_price + net_option_flow
-        max_loss = request.put_strike - underlying_price + net_option_flow
-        break_even = underlying_price - net_option_flow
-        max_return = (max_gain / initial_investment) * 100
-        max_loss_pct = (max_loss / initial_investment) * 100
-        rtn = {
-            "underlying_price": underlying_price,
-            "put_premium": put_premium,
-            "call_premium": call_premium,
-            "net_option_flow": net_option_flow,
-            "cost_str": cost_str,
-            "days_to_exp": days_to_exp,
-            "initial_investment": initial_investment,
-            "max_gain": max_gain,
-            "max_loss": max_loss,
-            "break_even": break_even,
-            "max_return": max_return,
-            "max_loss_pct": max_loss_pct,
-            "price_range": price_range.tolist(),
-            "pct_changes": pct_changes.tolist(),
-            "collar_values": collar_values,
-            "returns": returns}
 
         return rtn
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/analyze-long-put")
-async def analyze_long_put(request: LongOptionAnalysisRequest, current_user: User = Depends(get_current_user)):
+@router.get("/calculate-collar-returns")
+async def calculate_collar_returns(
+        symbol: str = Query(...),
+        purchase_price: float = Query(..., gt=0),
+        put_strike: float = Query(..., gt=0),
+        put_premium: float = Query(..., ge=0),
+        call_strike: float = Query(..., gt=0),
+        call_premium: float = Query(..., ge=0),
+        expiration_date: str = Query(...),
+        shares: int = Query(..., gt=0),
+        simulations: int = Query(10000, gt=0),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Calculates the potential returns for a collar position and runs a Monte Carlo simulation.
+    This version includes a corrected dividend projection logic.
+    """
     try:
-        ticker = yf.Ticker(request.symbol)
+        # Validate expiration date format
+        try:
+            expiration = datetime.datetime.strptime(expiration_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Please use YYYY-MM-DD.")
 
-        # Get current price
-        hist = ticker.history(period="1d")
+        today = datetime.date.today()
+        if expiration <= today:
+            raise HTTPException(status_code=400, detail="Expiration date must be in the future.")
+
+        days_to_expiration = (expiration - today).days
+
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="1y")
         if hist.empty:
-            raise ValueError("No historical data available")
-        underlying_price = hist['Close'].iloc[-1]
+            raise HTTPException(status_code=404, detail=f"No historical data found for symbol '{symbol}'.")
 
-        # Get options chain
-        chain = ticker.option_chain(request.expiration)
+        # --- Dividend Calculation (Corrected and Robust Logic) ---
+        total_dividends_per_share = 0.0
+        divs = ticker.dividends
 
-        # Find selected put
-        put = chain.puts[chain.puts['strike'] == request.strike]
-        if put.empty:
-            raise ValueError(f"No put found with strike {request.strike}")
-        premium = put['lastPrice'].iloc[0]
+        # Only proceed if the stock has a dividend history
+        if not divs.empty:
+            # Get the most recent dividend amount
+            last_div_amount = divs.iloc[-1]
 
-        # Calculate days to expiration
-        exp_date = datetime.strptime(request.expiration, '%Y-%m-%d')
-        days_to_exp = (exp_date - datetime.now()).days
+            # Estimate the frequency of dividend payments
+            if len(divs.index) >= 2:
+                # Use the time between the last two payments as the frequency
+                frequency = divs.index[-1] - divs.index[-2]
+            else:
+                # If only one dividend is on record, assume quarterly
+                frequency = pd.Timedelta(days=91)
 
-        # Create price range
-        price_range = np.linspace(underlying_price * 0.5, underlying_price * 1.5, 101)
-        pct_changes = (price_range - underlying_price) / underlying_price * 100
+            # Start projecting from the last known ex-dividend date
+            projected_date = divs.index[-1]
 
-        # Calculate profits
-        profits = [max(0, request.strike - price) - premium for price in price_range]
+            # Create a comparable expiration timestamp, handling timezones
+            # yfinance dividend dates are typically timezone-aware
+            expiration_ts = pd.Timestamp(datetime.datetime.combine(expiration, datetime.time.max))
+            if projected_date.tz:
+                expiration_ts = expiration_ts.tz_localize(projected_date.tz)
 
-        # Calculate key metrics
-        break_even = request.strike - premium
-        max_profit = request.strike - premium  # When stock goes to 0
-        max_loss = -premium
+            # Loop to find all projected dividends within the holding period
+            while True:
+                projected_date += frequency
+                if projected_date > expiration_ts:
+                    break  # Stop if the next projected date is past our expiration
+                if projected_date.date() > today:
+                    total_dividends_per_share += last_div_amount
+
+        # --- Net Cost Calculation ---
+        net_option_premium = call_premium - put_premium
+        initial_investment = purchase_price * shares
+
+        # --- Max Gain, Max Loss, and Profit/Risk Ratio ---
+        max_gain_nominal = (call_strike - purchase_price + net_option_premium + total_dividends_per_share) * shares
+        max_loss_nominal = (purchase_price - put_strike - net_option_premium - total_dividends_per_share) * shares
+
+        if initial_investment <= 0:
+            raise HTTPException(status_code=400, detail="Initial investment must be positive.")
+
+        max_gain_percentage = (max_gain_nominal / initial_investment) * 100
+        max_loss_percentage = (max_loss_nominal / initial_investment) * 100
+
+        # Annualized Returns
+        annualization_factor = 365.25 / days_to_expiration if days_to_expiration > 0 else 0
+        annualized_max_gain_percentage = max_gain_percentage * annualization_factor
+        annualized_max_loss_percentage = max_loss_percentage * annualization_factor
+
+        # Profit to Risk Ratio
+        if abs(max_loss_nominal) <= 1e-9:  # Avoid division by zero
+            profit_to_risk_ratio = float('inf') if max_gain_nominal > 0 else 0
+        else:
+            profit_to_risk_ratio = max_gain_nominal / abs(max_loss_nominal)
+
+        # --- Monte Carlo Simulation ---
+        log_returns = np.log(1 + hist['Close'].pct_change())
+        mu = log_returns.mean()
+        sigma = log_returns.std()
+        daily_drift = mu - (0.5 * sigma ** 2)
+
+        Z = norm.ppf(np.random.rand(days_to_expiration, simulations))
+        daily_returns_sim = np.exp(daily_drift + sigma * Z)
+
+        price_paths = np.zeros_like(daily_returns_sim)
+        price_paths[0] = hist['Close'].iloc[-1]
+        for t in range(1, days_to_expiration):
+            price_paths[t] = price_paths[t - 1] * daily_returns_sim[t]
+
+        expiration_prices = price_paths[-1]
+
+        def calculate_pl(stock_price):
+            pl_per_share = 0
+            if stock_price >= call_strike:
+                pl_per_share = call_strike - purchase_price
+            elif stock_price <= put_strike:
+                pl_per_share = put_strike - purchase_price
+            else:  # In between strikes
+                pl_per_share = stock_price - purchase_price
+            return (pl_per_share + net_option_premium + total_dividends_per_share) * shares
+
+        simulation_returns = [calculate_pl(price) for price in expiration_prices]
 
         return {
-            "underlying_price": underlying_price,
-            "premium": premium,
-            "days_to_exp": days_to_exp,
-            "break_even": break_even,
-            "max_profit": max_profit,
-            "max_loss": max_loss,
-            "price_range": price_range.tolist(),
-            "pct_changes": pct_changes.tolist(),
-            "profits": profits
+            "max_gain_nominal": max_gain_nominal,
+            "max_gain_percentage": max_gain_percentage,
+            "annualized_max_gain_percentage": annualized_max_gain_percentage,
+            "max_loss_nominal": -max_loss_nominal,  # Return loss as a negative number
+            "max_loss_percentage": -max_loss_percentage,
+            "annualized_max_loss_percentage": -annualized_max_loss_percentage,
+            "profit_to_risk_ratio": profit_to_risk_ratio,
+            "total_dividends_received": total_dividends_per_share * shares,
+            "monte_carlo_results": {
+                "average_return": np.mean(simulation_returns),
+                "median_return": np.median(simulation_returns),
+                "std_dev_return": np.std(simulation_returns),
+                "probability_of_profit": np.mean([1 for r in simulation_returns if r > 0]) * 100,
+                "return_distribution": simulation_returns,
+            }
         }
+
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/analyze-long-call")
-async def analyze_long_call(request: LongOptionAnalysisRequest, current_user: User = Depends(get_current_user)):
-    try:
-        ticker = yf.Ticker(request.symbol)
-        hist = ticker.history(period="1d")
-        underlying_price = hist['Close'].iloc[-1]
-
-        chain = ticker.option_chain(request.expiration)
-
-        # Find selected call
-        call = chain.calls[chain.calls['strike'] == request.strike]
-        if call.empty:
-            raise ValueError(f"No call found with strike {request.strike}")
-        premium = call['lastPrice'].iloc[0]
-
-        exp_date = datetime.strptime(request.expiration, '%Y-%m-%d')
-        days_to_exp = (exp_date - datetime.now()).days
-
-        price_range = np.linspace(underlying_price * 0.5, underlying_price * 1.5, 101)
-        pct_changes = (price_range - underlying_price) / underlying_price * 100
-
-        # Calculate profits (unlimited upside)
-        profits = [max(0, price - request.strike) - premium for price in price_range]
-
-        # Calculate key metrics
-        break_even = request.strike + premium
-        max_loss = -premium
-
-        return {
-            "underlying_price": underlying_price,
-            "premium": premium,
-            "days_to_exp": days_to_exp,
-            "break_even": break_even,
-            "max_profit": None,  # Unlimited
-            "max_loss": max_loss,
-            "price_range": price_range.tolist(),
-            "pct_changes": pct_changes.tolist(),
-            "profits": profits
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        # Return a more specific error if possible, otherwise a generic server error
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")

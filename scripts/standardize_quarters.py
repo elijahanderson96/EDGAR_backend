@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 import pandas as pd
@@ -265,10 +266,9 @@ def process_symbol_fact(symbol: str, fact_name: str) -> tuple[DataFrame | None, 
         return None
 
 
-if __name__ == '__main__':
+def refresh_standrdized_quarters(logger):
     from edgar.symbols import symbols
 
-    # Extract the list of symbols
     symbol_list = symbols['symbol']
 
     # Define the set of financial fact names to process
@@ -281,7 +281,13 @@ if __name__ == '__main__':
         'LiabilitiesCurrent'
     }
 
-    symbol = 'NVDA'
+    for symbol in symbol_list:
+        for fact_name in fact_names:
+            try:
+                data, inserted_data = process_symbol_fact(symbol, fact_name, logger=logger)
+                logger.info(f"Inserted {inserted_data.shape[0]} records into database for {symbol}:{fact_name}.")
+            except Exception as e:
+                print(e)
 
-    for fact_name in fact_names:
-        data, inserted_data = process_symbol_fact(symbol=symbol, fact_name=fact_name)
+if __name__ == '__main__':
+    root_logger = logging.getLogger()

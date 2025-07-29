@@ -155,6 +155,10 @@ def refresh_historical_prices_fun(logger):  # logger is the job_logger
     asyncio.run(historical_prices_main(logger, start_date='2000-01-01', end_date=None))
     logger.info(f"Historical prices refresh process completed inside refresh_historical_prices_fun.")
 
+def refresh_standardize_quarters_func(logger):
+    logger.info("Refreshing quarterly data.")
+    refresh_standardize_quarters(logger)
+
 
 # --- Main Execution ---
 if __name__ == "__main__":
@@ -175,7 +179,6 @@ if __name__ == "__main__":
         id=job_id_1,
         max_instances=1,
         args=[refresh_func, job_id_1],  # 1st arg to execute_job_and_send_log is job_func, 2nd is job_id
-        # Additional args for refresh_func itself would go after job_id_1
     )
 
     job_id_2 = 'refresh_historical_data_job'
