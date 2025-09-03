@@ -7,33 +7,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from jose import JWTError
 
-# Import the auth router
-from app.routes import auth
-# Import log path - ensure path is correct relative to project root
 from config.filepaths import APP_LOGS
-# Import the async connector - ensure path is correct relative to project root
 from database.async_database import db_connector
-# Import cache loading functions
 from app.cache import load_symbols_cache, load_dates_cache
 
-# --- Logging Configuration ---
-# Ensure the log directory exists
+
 os.makedirs(APP_LOGS, exist_ok=True)
 log_file_path = os.path.join(APP_LOGS, 'app.log')
 
-# Configure root logger
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_file_path),
-        logging.StreamHandler()  # Also print logs to console
+        logging.StreamHandler()
     ]
 )
-# Get logger for this module
 logger = logging.getLogger(__name__)
 
-# --- FastAPI App Initialization ---
 app = FastAPI(
     title="SEC Data API",
     description="API for user authentication and accessing SEC financial data.",
@@ -41,7 +32,6 @@ app = FastAPI(
 )
 
 
-# --- Database Connection Pool Management ---
 @app.on_event("startup")
 async def startup_event():
     """Initialize database connection pool on startup."""
@@ -134,11 +124,11 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 # --- API Routers ---
 # Import routers
-from app.routes import auth, financials, options, docs
+from app.routes import auth, financials, docs, montecarlo
 
 app.include_router(auth.router)
 app.include_router(financials.router)
-app.include_router(options.router)
+app.include_router(montecarlo.router)
 app.include_router(docs.router)
 
 
